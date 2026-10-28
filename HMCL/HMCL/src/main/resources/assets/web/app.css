@@ -360,13 +360,15 @@ body[data-theme="dark"] .icon-sun { display: block; }
 
 .appearance { display: flex; gap: 18px; align-items: flex-start; flex-wrap: nowrap; }
 
+/* 左侧栏宽度跟着渲染区走，渲染区是正方形（与 HMCL 原生皮肤预览同比例） */
 .ap-left {
   width: 320px; max-width: 100%; flex: 0 0 320px;
   display: flex; flex-direction: column; gap: 12px;
 }
 
 .preview-slot {
-  width: 320px; height: 420px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 18px;
   background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);

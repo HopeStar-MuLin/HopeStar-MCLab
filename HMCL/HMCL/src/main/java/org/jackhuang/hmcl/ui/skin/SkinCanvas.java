@@ -127,11 +127,6 @@ public class SkinCanvas extends Group {
 
     protected PerspectiveCamera camera = new PerspectiveCamera(true);
 
-    /// 主方向光。相机绕 Y 转的时候它也要跟着转，否则看到背面时整张脸全黑——
-    /// 这是第一版截图里后脑勺是纯黑块的原因。
-    private final DirectionalLight keyLight = new DirectionalLight(Color.gray(0.38));
-    private javafx.geometry.Point3D keyLightBase = new javafx.geometry.Point3D(0.3, 0.55, -0.78);
-
     protected Rotate xRotate = new Rotate(0, Rotate.X_AXIS);
     protected Rotate yRotate = new Rotate(180, Rotate.Y_AXIS);
     protected Rotate zRotate = new Rotate(0, Rotate.Z_AXIS);
@@ -169,12 +164,18 @@ public class SkinCanvas extends Group {
                 this.skin = SkinHelper.enlarge(this.skin, multiple, multiple);
             updateSkinModel(isSlim, cape != null);
             bindMaterial(root);
-            // 披风文件自带鞘翅图就按原版 (22,0) 布局取图；否则把披风图案 (0,0) 铺到翅膀上
+            // 鞘翅贴图依次回退：独立鞘翅图 → 披风自带的鞘翅图案 → 官方 elytra.png。
+            // 关键在于第三档：没有鞘翅图案的披风绝不能把披风图案铺到翅膀上——
+            // 翼形是靠贴图 alpha 裁出来的，一块满绘的披风图只会渲染成一块板砖。
             boolean dedicatedElytra = elytraTexture != null && elytraTexture != cape;
-            elytra.setWingTexture(dedicatedElytra
-                    ? ElytraModel.WingTexture.ELYTRA_REGION
-                    : ElytraModel.WingTexture.CAPE_REGION);
-            Image wingTexture = dedicatedElytra ? elytraTexture : cape;
+            Image wingTexture;
+            if (dedicatedElytra) {
+                wingTexture = elytraTexture;
+            } else if (ElytraModel.hasElytraArt(cape)) {
+                wingTexture = cape;
+            } else {
+                wingTexture = ElytraModel.getDefaultElytraImage();
+            }
             if (wingTexture != null) {
                 elytra.setTexture(wingTexture);
             }
@@ -206,28 +207,12 @@ public class SkinCanvas extends Group {
     /// 设置水平观察角度（度）。180 是正面，绕到 0 / 360 附近可以看到背后的披风或鞘翅。
     public void setYaw(double degree) {
         yRotate.setAngle(degree);
-        updateKeyLight();
-    }
-
-    /// 让主光跟着相机绕 Y 转动，保证「镜头看得到的面」永远是被照亮的那个面。
-    private void updateKeyLight() {
-        double radians = Math.toRadians(yRotate.getAngle() - 180);
-        double cos = Math.cos(radians), sin = Math.sin(radians);
-        javafx.geometry.Point3D base = keyLightBase;
-        double x = base.getX() * cos + base.getZ() * sin;
-        double z = -base.getX() * sin + base.getZ() * cos;
-        keyLight.setDirection(new javafx.geometry.Point3D(x, base.getY(), z));
     }
 
     /// 切换背饰形态：披风 / 鞘翅
     public void setCapeMode(@Nullable CapeMode mode) {
         this.capeMode = mode == null ? CapeMode.CAPE : mode;
         applyCapeModeVisibility();
-    }
-
-    /// 鞘翅贴图取法：披风文件自带鞘翅图就按原版布局，否则把披风图案铺上去
-    public void setElytraTextureMode(ElytraModel.WingTexture mode) {
-        elytra.setWingTexture(mode);
     }
 
     /// 启动/停止待机微摆。预览页打开时开着，关掉页面时停掉，避免后台空转。
@@ -261,13 +246,11 @@ public class SkinCanvas extends Group {
         init();
     }
 
+    /// 材质保持 HMCL 原本的写法：只挂 diffuseMap，不加高光调整。
+    /// 皮肤、披风、鞘翅三者共用同一个创建入口，外观才会一致。
     protected Material createMaterial(final Image image) {
         PhongMaterial material = new PhongMaterial();
         material.setDiffuseMap(image);
-        // Minecraft 的皮肤是纯漫反射的，默认 PhongMaterial 的白色高光会让模型像包了层塑料膜。
-        // 压到接近黑、并把高光半径放大，表面就变成哑光，方块之间才有「同一个物质」的观感。
-        material.setSpecularColor(Color.gray(0.08));
-        material.setSpecularPower(12);
         return material;
     }
 
@@ -297,16 +280,21 @@ public class SkinCanvas extends Group {
         rleg.setTranslateY(+(bodyInside.getHeight() + rlegInside.getHeight()) / 2);
 
         capeGroup.setTranslateY(+(capeCube.getHeight() - bodyOuter.getHeight()) / 2);
-        capeGroup.setTranslateZ(-(bodyInside.getDepth() + bodyOuter.getDepth()) / 2);
+        // 原版披风紧贴背外侧：身体背面在 z=2、披风占 2..3，中间没有缝。
+        // 这里原来用的是 -(身体厚+外层厚)/2 = -4，等于把披风悬空到身后 1.4 格，看着像浮在空中。
+        capeGroup.setTranslateZ(-(bodyOuter.getDepth() / 2 + capeCube.getDepth() / 2));
 
-        capeGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(10, Rotate.X_AXIS));
+        // 原版站立姿态的披风前倾 6°（PlayerCapeModel 里是 6.0 + 移动量），不是 10°
+        capeGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(6, Rotate.X_AXIS));
 
-        // 鞘翅的挂点与披风不同：披风是整块布挂在肩上（方块中心对齐组原点），
-        // 鞘翅是两片翼从肩胛向下垂（模型里已经把内上角挪到组原点），所以组的 Y 要顶到身体上沿。
+        // 鞘翅挂点按原版 ElytraModel 摆：模型根在身体原点，翼根就在肩线（MC 的 y=0）。
+        // 原版 PartPose 只有 offset(5,0,0) 和 ±15° 的 z/x 旋转，这里是组级挂点，
+        // 所以 Y 顶到身体上沿，Z 保持在身体中线（左右翼的厚度自己会占到背外侧）。
         elytraGroup.setTranslateY(-bodyOuter.getHeight() / 2);
-        // 贴着背但留出半个翼厚，避免和身体侧面互相穿插
-        elytraGroup.setTranslateZ(-(bodyInside.getDepth() / 2 + 1.2));
-        // 只做朝向翻转；倾角由 ElytraModel 内部按翼片单独控制，这样摆动时两片可以不同步
+        // z 保持 0：原版鞘翅方块的 z 是 -1..3（身体 -2..2），外表面只比背多出 1 格。
+        // 之前放在 -4（跟着旧披风走）会让翅膀整个悬到身后，看着像飘在空中。
+        elytraGroup.setTranslateZ(0);
+        // 只做朝向翻转：原版模型是面朝 -z、背朝 +z，这里正好反过来
         elytraGroup.getTransforms().add(new Rotate(180, Rotate.Y_AXIS));
 
         root.getTransforms().addAll(xRotate);
@@ -329,14 +317,10 @@ public class SkinCanvas extends Group {
     protected SubScene createSubScene() {
         Group group = new Group();
 
-        // 只有一盏满亮度环境光时，所有面亮度完全相同，模型看起来就是一张贴纸。
-        // 拆成「高基础亮度 + 一盏方向光」：基础光保证暗面不发黑，方向光让朝向不同的面产生梯度。
-        AmbientLight ambient = new AmbientLight(Color.gray(0.76));
-        group.getChildren().add(ambient);
-
-        // 光从观察者右上前方来（JavaFX 的 direction 是「光的行进方向」，所以指向 -z）
-        keyLight.setDirection(keyLightBase);
-        group.getChildren().add(keyLight);
+        // 沿用 HMCL 原本的光照：一盏满亮度环境光。皮肤和披风一直就是这么渲染的，
+        // 自己再加方向光会让左右脸一明一暗，反而和启动器别处的预览对不上。
+        AmbientLight light = new AmbientLight(Color.WHITE);
+        group.getChildren().add(light);
 
         group.getChildren().add(createPlayerModel());
         group.getTransforms().add(zRotate);

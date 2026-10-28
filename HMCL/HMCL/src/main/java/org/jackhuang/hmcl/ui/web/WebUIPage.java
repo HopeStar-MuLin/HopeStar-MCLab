@@ -67,8 +67,11 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
     private final WebBridge bridge;
 
     /// 外观页的 3D 预览：以覆盖层形式盖在 WebView 上方，位置由前端上报
-    private static final double PREVIEW_WIDTH = 320;
-    private static final double PREVIEW_HEIGHT = 420;
+    /// 渲染区固定为正方形，和 HMCL 自己的皮肤预览（OfflineAccountSkinPane 用 260×260）一致。
+    /// 之前用 320×420 的竖图，透视相机的视场按宽度算，人物会显得被横向压扁。
+    private static final double PREVIEW_SIZE = 360;
+    private static final double PREVIEW_WIDTH = PREVIEW_SIZE;
+    private static final double PREVIEW_HEIGHT = PREVIEW_SIZE;
 
     private final SkinCanvas preview = new SkinCanvas(
             org.jackhuang.hmcl.game.TexturesLoader.getDefaultSkinImage(), PREVIEW_WIDTH, PREVIEW_HEIGHT, true);

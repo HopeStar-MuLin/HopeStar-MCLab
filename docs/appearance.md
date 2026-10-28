@@ -258,3 +258,101 @@ DirectionalLight key     = new DirectionalLight(Color.gray(0.38)); // 朝向不�
 - 正版账号的披风列表拉取、切换、摘除（需要真实账号）
 - 导入披风时的双图选择（需要鼠标交互）
 - 带独立鞘翅贴图的 `ELYTRA_REGION` 渲染（缺一张真实鞘翅贴图样本，等有正版披风再验）
+
+---
+
+## 十一、改用游戏原版数据重做（本轮，推翻第十节的做法）
+
+第十节是照着 skinview3d 的公开参数推的，细节对不上游戏。这轮改成直接读**你本机安装的
+Minecraft 客户端**里的模型和贴图，数据全部来自游戏本体，不再靠二手资料。
+
+### 数据来源
+
+```
+C:\Users\Admin1\AppData\Roaming\.minecraft\versions\26.3\26.3.jar
+  assets/minecraft/textures/entity/equipment/wings/elytra.png   → 官方鞘翅贴图（64×32，269 字节）
+  net/minecraft/client/model/object/equipment/ElytraModel.class  → javap 反编译
+  net/minecraft/client/model/player/PlayerCapeModel.class        → javap 反编译
+  net/minecraft/world/entity/ElytraAnimationState.class          → javap 反编译
+```
+
+鞘翅贴图已原样复制到 `HMCL/src/main/resources/assets/img/elytra/elytra.png`。
+
+### 原版鞘翅的真实参数
+
+```java
+CubeDeformation grow = new CubeDeformation(1.0F);
+root.addOrReplaceChild("left_wing",
+    CubeListBuilder.create().texOffs(22, 0)
+        .addBox(-10, 0, 0, 10, 20, 2, grow),
+    PartPose.offsetAndRotation(5, 0, 0, 0.2617994F, 0, -0.2617994F));
+root.addOrReplaceChild("right_wing",
+    CubeListBuilder.create().texOffs(22, 0).mirror()
+        .addBox(0, 0, 0, 10, 20, 2, grow),
+    PartPose.offsetAndRotation(-5, 0, 0, 0.2617994F, 0, 0.2617994F));
+```
+
+四条关键事实：
+
+1. **几何是 12×22×4**。`addBox` 写的是 10×20×2，但 `CubeDeformation(1.0)` 会把每个面再向外撑 1。
+2. **UV 仍按 10×20×2 排**，起点 `(22,0)`，整块占 24×22 像素。几何尺寸和 UV 尺寸是两套数字。
+3. **两片翅膀都横跨整个背部**（各 12 宽、互相重叠），靠 ±15° 的 z 旋转拉开夹角。
+4. **翼形完全来自贴图 alpha**。方块画出来是两块板，只有贴图里画了的地方才看得见。
+
+站立姿态（`ElytraAnimationState`）：
+
+| 状态 | rotX | rotZ | rotY |
+|---|---|---|---|
+| 站立 | 15° | ∓15° | 0 |
+| 潜行 | 40° | ∓45° | 5° |
+| 滑翔 | 按速度插值 15°→20° | −15°→−90° | — |
+
+### 原版披风的真实参数
+
+```java
+body.addOrReplaceChild("cape",
+    CubeListBuilder.create().texOffs(0, 0)
+        .addBox(-5, 0, -1, 10, 16, 1, CubeDeformation.NONE),
+    PartPose.offsetAndRotation(0, 0, 2, 0, 3.1415927F, 0));
+// 站立时在 PlayerCapeModel 里再叠加 rotateX(6.0 + 移动量)
+```
+
+### 这轮修掉的四个错
+
+| # | 症状 | 原因 | 修法 |
+|---|---|---|---|
+| 1 | 翅膀只采到贴图的一条窄缝 | UV 归一化漏了除以纹理尺寸，直接按 24×22 的比例当 texCoord 用 | `halfWidth = BOX_W/totalW*scaleX`，`scaleX = 24/64` |
+| 2 | 两片翅膀朝身体内侧交叉，像一块斜糊的布 | JavaFX 的 y 轴朝下、MC 朝上，绕 Z 的正方向相反，照抄原版符号正好反了 | left zRot = +15°、right = −15° |
+| 3 | 披风悬空在身后 1.4 格 | HMCL 原来用 `-(身厚+外层厚)/2` = −4 | 改成 `-(外层厚/2 + 披风厚/2)` = −2.6，与原版"紧贴背外侧"一致 |
+| 4 | 披风倾角 10° | HMCL 写死 10° | 改成 6°，与原版站立姿态一致 |
+
+顺带把渲染区改成**正方形 360×360**——与 HMCL 自己的 `OfflineAccountSkinPane`（260×260）同比例。
+之前是 320×420 的竖图，透视相机的视场按短边算，人物会被横向压扁。
+
+### 贴图回退链（按你的要求）
+
+```
+独立鞘翅图（导入时选的第二张）
+  ↓ 没有
+披风文件里自带鞘翅图案（检测背面 (36,2) 10×20 是否 >5% 不透明）
+  ↓ 没有
+官方 elytra.png（从游戏 jar 提取）
+```
+
+**不再把披风图案硬铺到翅膀上。** 翼形靠 alpha 裁出，一块满绘的披风图只会渲染成一块板砖。
+
+检测为什么采背面：原版只画朝外那一面（UV 背面 `(36,2)`），正面是贴着身体的那面、原版留空。
+采正面的话，连官方披风都会被判成"没有鞘翅"——这是上一版另一个隐性 bug。
+
+### 验收截图
+
+- `docs/final-cape.png` —— 披风模式（PF 纹理），贴合背部、下摆呈流苏状
+- `docs/final-elytra.png` —— 鞘翅模式（PF 纹理，自带鞘翅图案）
+- `docs/shot-nocape.png` —— 无披风
+
+### 仍未验证
+
+- 正版账号的披风列表拉取 / 切换 / 摘除（需要真实账号）
+- 独立鞘翅图（导入时第二张）的分支（缺样本）
+- JavaFX 3D 对带 alpha 贴图的透明排序偶有瑕疵，翅膀与身体交叠处可能有个别像素穿插
+
