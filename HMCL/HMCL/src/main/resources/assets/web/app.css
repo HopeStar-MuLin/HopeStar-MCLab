@@ -463,3 +463,13 @@ body[data-theme="dark"] .icon-sun { display: block; }
 /* 置灰的分段开关：仍然占位，但点不动 */
 .seg.disabled { opacity: .45; }
 .seg.disabled button { cursor: default; }
+
+/* 空状态提示跨满整行：以前它作为网格项只占一格，长句子被挤成竖条 */
+.asset-grid .empty {
+  grid-column: 1 / -1;
+  padding: 18px 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+  max-width: 520px;
+}

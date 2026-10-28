@@ -46,4 +46,5 @@ Thumbs.db
 # 演示 / 测试用的本地数据
 .hmcl-demo/
 .hmcl-test/
+.hmcl-fresh/
 .minecraft/
