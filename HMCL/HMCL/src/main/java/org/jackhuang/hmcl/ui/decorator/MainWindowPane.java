@@ -187,6 +187,11 @@ final class MainWindowPane extends StackPane {
     /// Creates the help, minimize, and application-close buttons.
     ///
     /// @return a size-limited top-right button row
+    /// 隐藏/恢复自绘标题栏。Web 界面模式下由页面自己画顶栏，避免出现两条横条。
+    void setTitleBarVisible(boolean visible) {
+        frame.setTop(visible ? titleBar : null);
+    }
+
     private HBox createWindowButtons() {
         HBox buttons = new HBox();
         buttons.setAlignment(Pos.TOP_RIGHT);

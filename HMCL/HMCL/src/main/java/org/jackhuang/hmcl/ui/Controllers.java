@@ -297,6 +297,8 @@ public final class Controllers {
         // 实验性 Web 界面：-Dhmcl.ui.web=true 时用 WebView 页面替换原主页
         if (Boolean.getBoolean("hmcl.ui.web")) {
             LOG.info("Web UI enabled, switching main page to WebView");
+            // 顶栏交给页面自己画，窗口按钮与拖拽由 WebBridge 接管
+            decorator.setTitleBarVisible(false);
             navigate(new org.jackhuang.hmcl.ui.web.WebUIPage());
         }
 

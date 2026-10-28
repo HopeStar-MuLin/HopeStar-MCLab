@@ -930,6 +930,13 @@ public final class Decorator {
     /// Returns the stage currently controlled by this decorator.
     ///
     /// @return the current stage, or `null` while detached
+    /// 隐藏或恢复窗口自绘标题栏。
+    ///
+    /// @param visible `false` 时由页面自行绘制标题栏（Web UI 模式），窗口按钮与拖拽需由页面接管
+    public void setTitleBarVisible(boolean visible) {
+        mainWindowPane.setTitleBarVisible(visible);
+    }
+
     public @Nullable Stage getStage() {
         return stage;
     }

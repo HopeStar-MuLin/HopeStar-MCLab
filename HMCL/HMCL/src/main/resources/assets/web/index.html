@@ -7,14 +7,30 @@
 </head>
 <body data-theme="light">
 
+<header class="titlebar" data-drag>
+  <div class="tb-brand">
+    <div class="brand-mark"></div>
+    <strong>MCLab</strong>
+  </div>
+  <div class="tb-title" id="tb-title">主页</div>
+  <div class="tb-actions">
+    <button class="icon-btn" id="btn-refresh" title="刷新">
+      <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-theme" title="切换主题">
+      <svg viewBox="0 0 24 24" class="icon-moon"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+      <svg viewBox="0 0 24 24" class="icon-sun"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 2h2v3h-2zm0 17h2v3h-2zM2 11h3v2H2zm17 0h3v2h-3zM4.2 5.6 5.6 4.2l2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
+    </button>
+    <span class="tb-divider"></span>
+    <button class="win-btn" id="win-min" title="最小化">—</button>
+    <button class="win-btn" id="win-max" title="最大化">□</button>
+    <button class="win-btn danger" id="win-close" title="关闭">✕</button>
+  </div>
+</header>
+
 <div class="app">
   <!-- 侧栏 -->
   <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark"></div>
-      <div class="brand-text"><strong>MCLab</strong><span>Launcher</span></div>
-    </div>
-
     <nav class="nav">
       <button class="nav-item active" data-page="home">
         <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
@@ -46,19 +62,7 @@
 
   <!-- 主区 -->
   <main class="main">
-    <header class="topbar">
-      <h1 id="page-title">主页</h1>
-      <div class="topbar-actions">
-        <button class="icon-btn" id="btn-theme" title="切换主题">
-          <svg viewBox="0 0 24 24" class="icon-moon"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
-          <svg viewBox="0 0 24 24" class="icon-sun"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 2h2v3h-2zm0 17h2v3h-2zM2 11h3v2H2zm17 0h3v2h-3zM4.2 5.6 5.6 4.2l2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
-        </button>
-        <button class="icon-btn" id="btn-refresh" title="刷新">
-          <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
-        </button>
-      </div>
-    </header>
-
+    
     <div class="content">
 
       <!-- ================= 主页 ================= -->
@@ -193,6 +197,16 @@
     </div>
   </div>
 </div>
+
+<!-- 窗口缩放热区 -->
+<div class="rz rz-n" data-resize="n"></div>
+<div class="rz rz-s" data-resize="s"></div>
+<div class="rz rz-w" data-resize="w"></div>
+<div class="rz rz-e" data-resize="e"></div>
+<div class="rz rz-nw" data-resize="nw"></div>
+<div class="rz rz-ne" data-resize="ne"></div>
+<div class="rz rz-sw" data-resize="sw"></div>
+<div class="rz rz-se" data-resize="se"></div>
 
 <script src="app.js"></script>
 </body>

@@ -25,6 +25,7 @@ import javafx.scene.image.PixelReader;
 import javafx.scene.image.WritableImage;
 import javafx.scene.web.WebEngine;
 import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import org.jackhuang.hmcl.auth.Account;
 import org.jackhuang.hmcl.auth.authlibinjector.AuthlibInjectorAccount;
 import org.jackhuang.hmcl.game.GameComponentType;
@@ -43,6 +44,7 @@ import org.jackhuang.hmcl.ui.account.CreateAccountPane;
 import org.jackhuang.hmcl.ui.account.MicrosoftAccountLoginPane;
 import org.jackhuang.hmcl.ui.instances.Instances;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
+import org.jetbrains.annotations.Nullable;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -522,6 +524,106 @@ public final class WebBridge {
 
     private static String optString(JsonObject object, String key) {
         return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
+    }
+
+    // ==================== 窗口（自绘标题栏） ====================
+
+    private double dragMouseX;
+    private double dragMouseY;
+    private double dragStageX;
+    private double dragStageY;
+
+    private double resizeMouseX;
+    private double resizeMouseY;
+    private double resizeWidth;
+    private double resizeHeight;
+    private String resizeEdge = "";
+
+    private static @Nullable Stage stage() {
+        return Controllers.getStage();
+    }
+
+    public void minimize() {
+        Stage stage = stage();
+        if (stage != null) {
+            stage.setIconified(true);
+        }
+    }
+
+    public void toggleMaximize() {
+        Stage stage = stage();
+        if (stage != null) {
+            stage.setMaximized(!stage.isMaximized());
+        }
+    }
+
+    public void close() {
+        Platform.exit();
+    }
+
+    /// 记录拖拽起点。参数是屏幕坐标（JS 的 e.screenX / e.screenY）
+    public void dragStart(double screenX, double screenY) {
+        Stage stage = stage();
+        if (stage == null) {
+            return;
+        }
+        dragMouseX = screenX;
+        dragMouseY = screenY;
+        dragStageX = stage.getX();
+        dragStageY = stage.getY();
+    }
+
+    public void dragMove(double screenX, double screenY) {
+        Stage stage = stage();
+        if (stage == null || stage.isMaximized() || stage.isFullScreen()) {
+            return;
+        }
+        stage.setX(dragStageX + (screenX - dragMouseX));
+        stage.setY(dragStageY + (screenY - dragMouseY));
+    }
+
+    /// edge 取值：n / s / e / w / ne / nw / se / sw
+    public void resizeStart(double screenX, double screenY, String edge) {
+        Stage stage = stage();
+        if (stage == null) {
+            return;
+        }
+        dragStageX = stage.getX();
+        dragStageY = stage.getY();
+        resizeMouseX = screenX;
+        resizeMouseY = screenY;
+        resizeWidth = stage.getWidth();
+        resizeHeight = stage.getHeight();
+        resizeEdge = edge != null ? edge : "";
+    }
+
+    public void resizeMove(double screenX, double screenY) {
+        Stage stage = stage();
+        if (stage == null || stage.isMaximized() || resizeEdge.isEmpty()) {
+            return;
+        }
+
+        double dx = screenX - resizeMouseX;
+        double dy = screenY - resizeMouseY;
+        double minWidth = stage.getMinWidth() > 0 ? stage.getMinWidth() : 960;
+        double minHeight = stage.getMinHeight() > 0 ? stage.getMinHeight() : 640;
+
+        if (resizeEdge.contains("e")) {
+            stage.setWidth(Math.max(minWidth, resizeWidth + dx));
+        }
+        if (resizeEdge.contains("s")) {
+            stage.setHeight(Math.max(minHeight, resizeHeight + dy));
+        }
+        if (resizeEdge.contains("w")) {
+            double width = Math.max(minWidth, resizeWidth - dx);
+            stage.setX(dragStageX + (resizeWidth - width));
+            stage.setWidth(width);
+        }
+        if (resizeEdge.contains("n")) {
+            double height = Math.max(minHeight, resizeHeight - dy);
+            stage.setY(dragStageY + (resizeHeight - height));
+            stage.setHeight(height);
+        }
     }
 
     // ==================== 杂项 ====================

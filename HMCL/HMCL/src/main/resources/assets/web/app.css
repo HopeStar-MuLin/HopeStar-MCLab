@@ -40,7 +40,44 @@ svg { width: 18px; height: 18px; fill: currentColor; }
 .small { font-size: 12.5px; }
 .hidden, [hidden] { display: none !important; }
 
-.app { display: flex; height: 100%; }
+.titlebar {
+  height: 38px; flex: 0 0 38px;
+  display: flex; align-items: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding-right: 6px;
+  -webkit-user-select: none; user-select: none;
+}
+
+.tb-brand { display: flex; align-items: center; gap: 8px; padding: 0 14px; width: 208px; box-sizing: border-box; }
+.tb-brand strong { font-size: 13px; }
+.tb-brand .brand-mark { width: 20px; height: 20px; border-radius: 6px; }
+
+.tb-title { flex: 1; font-size: 13px; font-weight: 600; color: var(--text); }
+
+.tb-actions { display: flex; align-items: center; gap: 2px; }
+.tb-divider { width: 1px; height: 16px; background: var(--border); margin: 0 6px; }
+
+.win-btn {
+  width: 36px; height: 28px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--muted); font-size: 13px;
+  cursor: pointer; line-height: 1;
+}
+.win-btn:hover { background: var(--surface-2); color: var(--text); }
+.win-btn.danger:hover { background: var(--danger); color: #fff; }
+
+/* 缩放热区 */
+.rz { position: fixed; z-index: 30; }
+.rz-n { top: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+.rz-s { bottom: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+.rz-w { left: 0; top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+.rz-e { right: 0; top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+.rz-nw { left: 0; top: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.rz-ne { right: 0; top: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.rz-sw { left: 0; bottom: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.rz-se { right: 0; bottom: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+
+.app { display: flex; height: calc(100% - 38px); }
 
 /* ---------------- 侧栏 ---------------- */
 
@@ -96,10 +133,6 @@ svg { width: 18px; height: 18px; fill: currentColor; }
 /* ---------------- 主区 ---------------- */
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-
-.topbar { height: 50px; flex: 0 0 50px; display: flex; align-items: center; padding: 0 18px; }
-.topbar h1 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; }
-.topbar-actions { display: flex; gap: 4px; }
 
 .icon-btn {
   width: 32px; height: 32px; border: 0; border-radius: 9px;

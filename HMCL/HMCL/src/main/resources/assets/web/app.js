@@ -400,7 +400,8 @@
     for (var j = 0; j < pages.length; j++) {
       pages[j].classList.toggle('active', pages[j].id === 'page-' + page);
     }
-    document.getElementById('page-title').textContent = titles[page] || '';
+    var tb = document.getElementById('tb-title');
+    if (tb) { tb.textContent = titles[page] || ''; }
   }
 
   function initUi() {
@@ -421,6 +422,15 @@
     document.getElementById('btn-refresh').addEventListener('click', function () {
       call('refresh');
     });
+    document.getElementById('win-min').addEventListener('click', function () { call('minimize'); });
+    document.getElementById('win-max').addEventListener('click', function () { call('toggleMaximize'); });
+    document.getElementById('win-close').addEventListener('click', function () { call('close'); });
+    document.querySelector('.titlebar').addEventListener('dblclick', function (e) {
+      if (e.target.closest('.tb-actions')) { return; }
+      call('toggleMaximize');
+    });
+    initWindowDrag();
+
     document.getElementById('btn-theme').addEventListener('click', function () {
       var body = document.body;
       body.setAttribute('data-theme', body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
@@ -450,6 +460,39 @@
       document.getElementById('icon-step-pick').hidden = false;
     });
     initCropEvents();
+  }
+
+  function initWindowDrag() {
+    var dragging = false;
+    var resizeEdge = null;
+
+    document.querySelector('.titlebar').addEventListener('mousedown', function (e) {
+      if (e.button !== 0 || e.target.closest('.tb-actions')) { return; }
+      dragging = true;
+      call('dragStart', e.screenX, e.screenY);
+    });
+
+    var handles = document.querySelectorAll('[data-resize]');
+    for (var i = 0; i < handles.length; i++) {
+      (function (handle) {
+        handle.addEventListener('mousedown', function (e) {
+          resizeEdge = handle.getAttribute('data-resize');
+          call('resizeStart', e.screenX, e.screenY, resizeEdge);
+          e.preventDefault();
+          e.stopPropagation();
+        });
+      })(handles[i]);
+    }
+
+    window.addEventListener('mousemove', function (e) {
+      if (dragging) { call('dragMove', e.screenX, e.screenY); }
+      if (resizeEdge) { call('resizeMove', e.screenX, e.screenY); }
+    });
+
+    window.addEventListener('mouseup', function () {
+      dragging = false;
+      resizeEdge = null;
+    });
   }
 
   // ---------------- Java 回调入口 ----------------
