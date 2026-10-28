@@ -984,6 +984,24 @@ public final class WebBridge {
         execute("window.__hmcl && window.__hmcl.onAppearance(" + JsonUtils.GSON.toJson(appearance()) + ")");
     }
 
+    // ==================== 下载 ====================
+
+    private final DownloadService download = new DownloadService(this::executeJs);
+
+    private void executeJs(String script) {
+        execute(script);
+    }
+
+    /// 前端进下载页时调用，force=true 表示下拉刷新
+    public void requestVersions(boolean force) {
+        download.requestVersions(force);
+    }
+
+    /// 安装指定版本（原版）
+    public void installVersion(String versionId) {
+        download.installVersion(versionId);
+    }
+
     // ==================== 窗口（自绘标题栏） ====================
 
     private double dragMouseX;

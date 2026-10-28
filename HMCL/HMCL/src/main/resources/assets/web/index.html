@@ -216,33 +216,32 @@
 
       <!-- ================= 下载 ================= -->
       <section class="page" id="page-download">
-        <div class="grid three stagger">
-          <div class="card dl-card">
-            <div class="dl-head">
-              <span class="dl-ico"><svg viewBox="0 0 24 24"><path d="M4 5h16v6H4zm0 8h16v6H4z"/></svg></span>
-              <h4>游戏版本</h4>
-            </div>
-            <p class="muted small">正式版 / 快照 / 远古版本，按版本清单安装</p>
-            <button class="btn ghost small" disabled>接入中</button>
+        <div class="dl-toolbar">
+          <div class="seg" id="dl-filter">
+            <button data-filter="release" class="active">正式版</button>
+            <button data-filter="all">全部</button>
+            <button data-filter="snapshot">快照</button>
+            <button data-filter="old">远古</button>
           </div>
-          <div class="card dl-card">
-            <div class="dl-head">
-              <span class="dl-ico"><svg viewBox="0 0 24 24"><path d="M12 2 3 7l9 5 9-5zM3 12l9 5 9-5v5l-9 5-9-5z"/></svg></span>
-              <h4>模组加载器</h4>
-            </div>
-            <p class="muted small">Forge / NeoForge / Fabric / Quilt，装在已有版本上</p>
-            <button class="btn ghost small" disabled>接入中</button>
-          </div>
-          <div class="card dl-card">
-            <div class="dl-head">
-              <span class="dl-ico"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg></span>
-              <h4>整合包</h4>
-            </div>
-            <p class="muted small">Modrinth / CurseForge，带图标与依赖</p>
-            <button class="btn ghost small" disabled>接入中</button>
-          </div>
+          <input class="dl-search" id="dl-search" type="text" placeholder="搜索版本号，例如 1.21.4" spellcheck="false">
+          <span class="muted small" id="dl-count"></span>
+          <button class="kbd-btn" id="dl-refresh" title="重新拉取版本清单">
+            <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+            <span>刷新</span>
+          </button>
         </div>
-        <p class="muted small" style="margin-top:16px">下载链路沿用 HMCL 的版本解析与多源下载，界面接入后替换这里的占位按钮。</p>
+
+        <div class="dl-progress" id="dl-progress" hidden>
+          <div class="dl-progress-head">
+            <span id="dl-progress-text">准备中…</span>
+            <button class="link" id="dl-progress-hide">收起</button>
+          </div>
+          <div class="bar indeterminate"><i></i></div>
+        </div>
+
+        <div class="dl-list" id="dl-list">
+          <div class="empty">正在从 Mojang 拉取版本清单…</div>
+        </div>
       </section>
 
       <!-- ================= 设置 ================= -->

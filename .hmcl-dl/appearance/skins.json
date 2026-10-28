@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "builtin-steve",
+      "name": "Steve（宽体）",
+      "model": "default",
+      "hasElytra": false,
+      "builtin": true,
+      "addedAt": 0
+    },
+    {
+      "id": "builtin-alex",
+      "name": "Alex（纤体）",
+      "model": "slim",
+      "hasElytra": false,
+      "builtin": true,
+      "addedAt": 0
+    }
+  ]
+}

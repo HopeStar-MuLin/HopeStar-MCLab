@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schemas.glavo.site/hmcl/game-settings/1.0.1",
+  "presets": [
+    {
+      "id": "game-settings-preset:01a18166-645f-76af-8f93-dbb04f7febbf",
+      "autoNameNumber": 1
+    }
+  ]
+}

@@ -213,71 +213,90 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         // 让前端知道桥已经挂上，避免时序竞争
         webView.getEngine().executeScript("document.dispatchEvent(new Event('native-ready'))");
 
+        // 验收/调试用的现场覆盖（切页、主题、侧栏、注入脚本）与截图无关，
+        // 所以放在截图分支外面：不带 -Dhmcl.web.shot 也能用来手动触发安装、登录这些路径
+        applyOverrides();
+
         String shot = System.getProperty("hmcl.web.shot");
-        if (shot != null && !shot.isBlank()) {
-            // 截图模式下把窗口调到设计尺寸，避免默认窗口太窄看不出布局
-            if (getScene() != null && getScene().getWindow() instanceof javafx.stage.Stage stage) {
-                // 默认按设计尺寸截图，可用 -Dhmcl.web.size=1024x680 指定，方便检查不同窗口下的裁切
-                String size = System.getProperty("hmcl.web.size", "1180x780");
-                String[] parts = size.split("x");
-                stage.setWidth(Integer.parseInt(parts[0].trim()));
-                stage.setHeight(Integer.parseInt(parts[1].trim()));
-            }
-            String scroll = System.getProperty("hmcl.web.scroll");
-            if (scroll != null && !scroll.isBlank()) {
-                webView.getEngine().executeScript(
-                        "var c = document.getElementById('page-body'); if (c) c.scrollTop = " + scroll + ";");
-            }
+        if (shot == null || shot.isBlank()) {
+            return;
+        }
 
-            String page = System.getProperty("hmcl.web.page");
-            if (page != null && !page.isBlank()) {
-                // 账号页没有侧栏入口，走左下角账号卡
-                String selector = "accounts".equals(page)
-                        ? "#account-chip"
-                        : ".rail-nav .rail-item[data-page=\"" + page + "\"]";
-                Object switched = webView.getEngine().executeScript(
-                        "(function(){var n=document.querySelector('" + selector + "');"
-                                + "if(!n) return 'no-nav'; n.click();"
-                                + "return document.querySelector('.page.on').id;})()");
-                System.out.println("WEB PAGE -> " + switched);
-            }
+        // 截图模式把窗口调到指定尺寸，避免默认窗口太窄看不出布局
+        if (getScene() != null && getScene().getWindow() instanceof Stage stage) {
+            String size = System.getProperty("hmcl.web.size", "1366x768");
+            String[] parts = size.split("x");
+            stage.setWidth(Integer.parseInt(parts[0].trim()));
+            stage.setHeight(Integer.parseInt(parts[1].trim()));
+        }
 
-            // 验收用：-Dhmcl.web.theme=dark 强制深色，检查暗色下的对比度
-            String theme = System.getProperty("hmcl.web.theme");
-            if (theme != null && !theme.isBlank()) {
-                // 同时写进 localStorage：否则随后推来的 state.theme 会把强制主题覆盖回去
-                String t = org.jackhuang.hmcl.util.gson.JsonUtils.GSON.toJson(theme);
-                webView.getEngine().executeScript(
-                        "(function(){try{localStorage.setItem('mclab.theme'," + t + ")}catch(e){}"
-                                + "document.body.setAttribute('data-theme'," + t + ");})()");
+        PauseTransition delay = new PauseTransition(Duration.millis(4500));
+        delay.setOnFinished(event -> {
+            try {
+                savePng(WebUIPage.this.snapshot(null, null), Path.of(shot));
+                System.out.println("WEB SHOT OK " + shot);
+            } catch (Exception e) {
+                System.out.println("WEB SHOT FAILED " + e);
             }
+            Platform.exit();
+        });
+        delay.play();
+    }
 
-            // 验收用：-Dhmcl.web.rail=closed 强制收起侧栏，检查收起态布局
-            String rail = System.getProperty("hmcl.web.rail");
-            if (rail != null && !rail.isBlank()) {
-                webView.getEngine().executeScript("document.body.classList.toggle('rail-open', "
-                        + ("open".equals(rail)) + ")");
-            }
+    /// 应用 `-Dhmcl.web.*` 指定的现场覆盖。全部可选，缺省即正常界面。
+    private void applyOverrides() {
+        WebEngine engine = webView.getEngine();
 
-            // 验收用：-Dhmcl.web.tab=cape 在外观页里再点一下对应标签
-            String tab = System.getProperty("hmcl.web.tab");
-            if (tab != null && !tab.isBlank()) {
-                Object clicked = webView.getEngine().executeScript(
-                        "(function(){var t=document.querySelector('.tab[data-tab=\"" + tab + "\"]');"
-                                + "if(!t) return 'no-tab'; t.click(); return t.textContent;})()");
-                System.out.println("WEB TAB -> " + clicked);
+        String scroll = System.getProperty("hmcl.web.scroll");
+        if (scroll != null && !scroll.isBlank()) {
+            engine.executeScript(
+                    "var c = document.getElementById('page-body'); if (c) c.scrollTop = " + scroll + ";");
+        }
+
+        String page = System.getProperty("hmcl.web.page");
+        if (page != null && !page.isBlank()) {
+            // 账号页没有侧栏入口，走左下角账号卡
+            String selector = "accounts".equals(page)
+                    ? "#account-chip"
+                    : ".rail-nav .rail-item[data-page=\"" + page + "\"]";
+            Object switched = engine.executeScript(
+                    "(function(){var n=document.querySelector('" + selector + "');"
+                            + "if(!n) return 'no-nav'; n.click();"
+                            + "return document.querySelector('.page.on').id;})()");
+            System.out.println("WEB PAGE -> " + switched);
+        }
+
+        String tab = System.getProperty("hmcl.web.tab");
+        if (tab != null && !tab.isBlank()) {
+            Object clicked = engine.executeScript(
+                    "(function(){var t=document.querySelector('.tab[data-tab=\"" + tab + "\"]');"
+                            + "if(!t) return 'no-tab'; t.click(); return t.textContent;})()");
+            System.out.println("WEB TAB -> " + clicked);
+        }
+
+        String theme = System.getProperty("hmcl.web.theme");
+        if (theme != null && !theme.isBlank()) {
+            // 同时写进 localStorage：否则随后推来的 state.theme 会把强制主题覆盖回去
+            String t = org.jackhuang.hmcl.util.gson.JsonUtils.GSON.toJson(theme);
+            engine.executeScript(
+                    "(function(){try{localStorage.setItem('mclab.theme'," + t + ")}catch(e){}"
+                            + "document.body.setAttribute('data-theme'," + t + ");})()");
+        }
+
+        String rail = System.getProperty("hmcl.web.rail");
+        if (rail != null && !rail.isBlank()) {
+            engine.executeScript("document.body.classList.toggle('rail-open', "
+                    + ("open".equals(rail)) + ")");
+        }
+
+        // 注入任意脚本：验证需要点击才能走到的地方（安装、登录、导入…）
+        String js = System.getProperty("hmcl.web.js");
+        if (js != null && !js.isBlank()) {
+            try {
+                System.out.println("WEB JS -> " + engine.executeScript(js));
+            } catch (Exception e) {
+                System.out.println("WEB JS FAILED -> " + e);
             }
-            PauseTransition delay = new PauseTransition(Duration.millis(4500));
-            delay.setOnFinished(event -> {
-                try {
-                    savePng(WebUIPage.this.snapshot(null, null), Path.of(shot));
-                    System.out.println("WEB SHOT OK " + shot);
-                } catch (Exception e) {
-                    System.out.println("WEB SHOT FAILED " + e);
-                }
-                Platform.exit();
-            });
-            delay.play();
         }
     }
 

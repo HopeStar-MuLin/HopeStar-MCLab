@@ -482,7 +482,9 @@
     // 外观页的待机摆动靠 Java 侧定期重绘，离开页面要停掉
     call('setPreviewActive', page === 'appearance');
 
-    if (page === 'appearance') {
+    if (page === 'download') {
+      showDownload();
+    } else if (page === 'appearance') {
       showAppearance();
     } else {
       if (call('hidePreview') === null) { /* 老版本桥没有这个方法时忽略 */ }
@@ -653,6 +655,7 @@
     });
     initCropEvents();
     initAppearance();
+    initDownload();
 
     document.getElementById('btn-account-appearance').addEventListener('click', function () {
       go('appearance');
@@ -693,6 +696,150 @@
     });
   }
 
+
+  // ---------------- 下载页 ----------------
+
+  var dlVersions = null;      // { versions: [...] }
+  var dlFilter = 'release';   // release | all | snapshot | old
+  var dlQuery = '';
+  var dlInstalling = null;
+
+  var DL_MAX_ROWS = 300;      // 清单有 900+ 条，全渲染会卡；搜索能覆盖剩下的
+
+  function typeLabel(type) {
+    if (type === 'release') { return '正式版'; }
+    if (type === 'snapshot') { return '快照'; }
+    if (type === 'old-alpha' || type === 'old-beta') { return '远古'; }
+    return '其它';
+  }
+
+  function typeClass(type) {
+    if (type === 'release') { return 'release'; }
+    if (type === 'snapshot') { return 'snapshot'; }
+    return 'old';
+  }
+
+  function matchFilter(type) {
+    if (dlFilter === 'all') { return true; }
+    if (dlFilter === 'release') { return type === 'release'; }
+    if (dlFilter === 'snapshot') { return type === 'snapshot'; }
+    return type === 'old-alpha' || type === 'old-beta';
+  }
+
+  function fmtDate(ms) {
+    if (!ms) { return '—'; }
+    var d = new Date(ms);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function renderDownloadList() {
+    var box = document.getElementById('dl-list');
+    if (!box) { return; }
+    box.innerHTML = '';
+
+    if (!dlVersions) {
+      box.appendChild(el('div', 'empty', '正在从 Mojang 拉取版本清单…'));
+      return;
+    }
+
+    var q = dlQuery.trim().toLowerCase();
+    var rows = (dlVersions.versions || []).filter(function (v) {
+      if (!matchFilter(v.type)) { return false; }
+      return !q || String(v.id).toLowerCase().indexOf(q) >= 0;
+    });
+
+    var count = document.getElementById('dl-count');
+    if (count) {
+      count.textContent = rows.length + ' 个版本' + (rows.length > DL_MAX_ROWS
+        ? '（显示前 ' + DL_MAX_ROWS + ' 个）' : '');
+    }
+
+    if (!rows.length) {
+      box.appendChild(el('div', 'empty', q ? '没有匹配「' + dlQuery + '」的版本。' : '这个分类下没有版本。'));
+      return;
+    }
+
+    var head = el('div', 'dl-row head');
+    ['版本', '类型', '发布日期', ''].forEach(function (t) { head.appendChild(el('span', null, t)); });
+    box.appendChild(head);
+
+    rows.slice(0, DL_MAX_ROWS).forEach(function (v) {
+      var row = el('div', 'dl-row' + (dlInstalling === v.id ? ' installing' : ''));
+      row.appendChild(el('span', 'dl-id', v.id));
+
+      var badge = el('span', 'dl-badge ' + typeClass(v.type), typeLabel(v.type));
+      row.appendChild(badge);
+      row.appendChild(el('span', 'dl-date', fmtDate(v.date)));
+
+      var btn;
+      if (v.installed) {
+        btn = el('button', 'btn ghost small', '已安装');
+        btn.disabled = true;
+      } else {
+        btn = el('button', 'btn ghost small', dlInstalling === v.id ? '安装中…' : '安装');
+        btn.disabled = !!dlInstalling;
+        btn.addEventListener('click', function () {
+          // 同时只跑一个安装任务，避免两个任务抢同一个仓库草稿
+          if (dlInstalling) { return; }
+          call('installVersion', v.id);
+        });
+      }
+      row.appendChild(btn);
+
+      box.appendChild(row);
+    });
+  }
+
+  function showDownload() {
+    renderDownloadList();
+    // 已经拉过就不再打网络；刷新按钮传 true
+    if (!dlVersions) { call('requestVersions', false); }
+  }
+
+  function setDownloadProgress(text, visible) {
+    var box = document.getElementById('dl-progress');
+    var label = document.getElementById('dl-progress-text');
+    if (!box) { return; }
+    box.hidden = !visible;
+    if (label && text) { label.textContent = text; }
+  }
+
+  function initDownload() {
+    var seg = document.getElementById('dl-filter');
+    if (seg) {
+      seg.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-filter]');
+        if (!b) { return; }
+        var btns = seg.querySelectorAll('button');
+        for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('active'); }
+        b.classList.add('active');
+        dlFilter = b.getAttribute('data-filter');
+        renderDownloadList();
+      });
+    }
+
+    var search = document.getElementById('dl-search');
+    if (search) {
+      search.addEventListener('input', function () {
+        dlQuery = this.value || '';
+        renderDownloadList();
+      });
+    }
+
+    var refresh = document.getElementById('dl-refresh');
+    if (refresh) {
+      refresh.addEventListener('click', function () {
+        dlVersions = null;
+        renderDownloadList();
+        call('requestVersions', true);
+      });
+    }
+
+    var hide = document.getElementById('dl-progress-hide');
+    if (hide) {
+      hide.addEventListener('click', function () { setDownloadProgress('', false); });
+    }
+  }
 
   // ---------------- 外观页 ----------------
 
@@ -1063,6 +1210,33 @@
           break;
         }
       }
+    },
+    onVersions: function (json) {
+      try { dlVersions = JSON.parse(json); } catch (e) { console.error('bad versions', e); return; }
+      renderDownloadList();
+    },
+    onInstallStage: function (json) {
+      var data = null;
+      try { data = JSON.parse(json); } catch (e) { return; }
+      if (!data) { return; }
+      if (data.id) { dlInstalling = data.done || data.error ? null : data.id; }
+      if (data.stage || !data.done) { setDownloadProgress(data.stage || '', true); }
+      if (data.done) {
+        setDownloadProgress('', false);
+        if (!data.error && dlVersions) {
+          // 装完就地改成「已安装」，不用等下次拉清单
+          (dlVersions.versions || []).forEach(function (v) {
+            if (v.id === data.id) { v.installed = true; }
+          });
+        }
+        toast(data.error ? ('安装失败：' + data.error) : '安装完成，已切换到新实例', data.error ? 'error' : 'ok');
+      }
+      renderDownloadList();
+    },
+    onInstallFinished: function (id) {
+      dlInstalling = null;
+      renderDownloadList();
+      call('refresh');
     },
     onServerCapes: function (json) {
       try { serverCapes = JSON.parse(json || '[]'); } catch (e) { serverCapes = []; }

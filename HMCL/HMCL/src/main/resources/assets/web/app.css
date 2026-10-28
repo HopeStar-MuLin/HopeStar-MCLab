@@ -898,6 +898,90 @@ body[data-theme="dark"] .login-card[data-login="authlib"] .login-ico { color: #4
 .dl-card .btn { margin-top: auto; align-self: flex-start; }
 
 /* ============================================================================
+   下载页
+   ========================================================================== */
+
+.dl-toolbar {
+  display: flex; align-items: center; gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+.dl-toolbar .muted { margin-left: auto; }
+.dl-search {
+  height: 32px; min-width: 180px; flex: 1 1 180px; max-width: 280px;
+  padding: 0 11px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); color: var(--text);
+  font-size: 13px; font-family: inherit;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.dl-search::placeholder { color: var(--muted); }
+.dl-search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 进度条：只有一段在跑，用 transform 位移，不触发重排 */
+.dl-progress {
+  position: sticky; top: 0; z-index: 5;
+  margin-bottom: var(--sp-3); padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  box-shadow: var(--shadow-1);
+}
+.dl-progress-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  font-size: 12.5px; margin-bottom: 8px;
+}
+.dl-progress-head span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 40%; border-radius: 2px; background: var(--accent); }
+.bar.indeterminate i { animation: barSlide 1.1s var(--ease-out) infinite; }
+@keyframes barSlide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+
+/* 版本列表：一行一个版本，比卡片网格更适合「长清单 + 搜索」 */
+.dl-list {
+  background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.dl-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 92px 108px 76px;
+  gap: var(--sp-3); align-items: center;
+  padding: 10px var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.dl-row:last-child { border-bottom: 0; }
+.dl-row.head {
+  font-size: 12px; color: var(--muted); background: var(--surface-2);
+  position: sticky; top: 0; z-index: 2;
+}
+.dl-row:not(.head):hover { background: var(--surface-2); }
+.dl-row .dl-id { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dl-row .dl-date { color: var(--muted); font-size: 12px; }
+.dl-badge {
+  font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted);
+  justify-self: start; white-space: nowrap;
+}
+.dl-badge.release { color: #16a34a; border-color: rgba(22, 163, 74, .4); background: rgba(22, 197, 94, .1); }
+.dl-badge.snapshot { color: #b45309; border-color: rgba(180, 83, 9, .4); background: rgba(234, 179, 8, .12); }
+.dl-badge.old { color: #7c3aed; border-color: rgba(124, 58, 237, .35); background: rgba(124, 58, 237, .1); }
+body[data-theme="dark"] .dl-badge.release { color: #4ade80; }
+body[data-theme="dark"] .dl-badge.snapshot { color: #fbbf24; }
+body[data-theme="dark"] .dl-badge.old { color: #c4b5fd; }
+.dl-row .btn { justify-self: end; }
+.dl-row.installing { background: var(--accent-soft); }
+
+/* 窄窗口：日期列先让位，版本号与按钮保持可点 */
+@media (max-width: 760px) {
+  .dl-row { grid-template-columns: minmax(96px, 1fr) 84px 72px; }
+  .dl-row .dl-date { display: none; }
+  .dl-search { max-width: none; }
+}
+
+/* ============================================================================
    分辨率自适应
    ----------------------------------------------------------------------------
    三档断点，按「先挤布局，再折栏，最后单列」的顺序：
