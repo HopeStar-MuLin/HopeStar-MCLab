@@ -118,6 +118,46 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         GameDirectoryManager.selectedInstanceProperty().addListener((observable, oldValue, newValue) -> pushLater());
     }
 
+    /// 在页面里造一个持续 3 秒的位移动画，用 requestAnimationFrame 采样帧间隔。
+    ///
+    /// <p>只动 `transform`：这是唯一能走合成层、不触发布局的属性。
+    /// 如果这里都跑不到 55fps，说明瓶颈在 WebView 的软件光栅，而不是我们写的 CSS。
+    private void measureFrameRate() {
+        String probe = """
+                (function(){
+                  var d = document.createElement('div');
+                  d.style.cssText = 'position:fixed;left:0;top:0;width:120px;height:120px;'
+                    + 'border-radius:24px;background:linear-gradient(135deg,#5b7cfa,#8f6bff);'
+                    + 'opacity:.5;z-index:9999;pointer-events:none;will-change:transform';
+                  document.body.appendChild(d);
+                  var t0 = 0, last = 0, frames = 0, worst = 0, sum = 0;
+                  function tick(t){
+                    if (!t0) { t0 = t; last = t; }
+                    var dt = t - last; last = t; frames++; sum += dt;
+                    if (dt > worst) worst = dt;
+                    d.style.transform = 'translate(' + (Math.sin(t/300)*200+240) + 'px,120px)';
+                    if (t - t0 < 3000) { requestAnimationFrame(tick); }
+                    else {
+                      window.__fps = { avg: +(frames/((t-t0)/1000)).toFixed(1),
+                                       worst: +worst.toFixed(1), meanGap: +(sum/frames).toFixed(2) };
+                      d.remove();
+                    }
+                  }
+                  requestAnimationFrame(tick);
+                })();
+                """;
+        webView.getEngine().executeScript(probe);
+
+        var report = new PauseTransition(Duration.millis(4200));
+        report.setOnFinished(event -> {
+            Object result = webView.getEngine().executeScript(
+                    "window.__fps ? JSON.stringify(window.__fps) : 'null'");
+            LOG.info("Web UI frame rate: " + result);
+            System.out.println("WEB FPS " + result);
+        });
+        report.play();
+    }
+
     /// 设计尺寸：窗口默认按这个尺寸开，屏幕装不下时按比例收。
     private static final double DESIGN_WIDTH = 1280;
     private static final double DESIGN_HEIGHT = 860;
@@ -163,6 +203,12 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
     private void onLoaded() {
         JSObject window = (JSObject) webView.getEngine().executeScript("window");
         window.setMember("nativeBridge", bridge);
+
+        // 帧率探针：-Dhmcl.web.fps=true 时在页面里跑一段持续动画，统计 rAF 间隔，
+        // 用来判断「卡」到底是动画本身的成本，还是渲染管线的问题（而不是凭感觉猜）
+        if (Boolean.getBoolean("hmcl.web.fps")) {
+            measureFrameRate();
+        }
 
         // 让前端知道桥已经挂上，避免时序竞争
         webView.getEngine().executeScript("document.dispatchEvent(new Event('native-ready'))");
