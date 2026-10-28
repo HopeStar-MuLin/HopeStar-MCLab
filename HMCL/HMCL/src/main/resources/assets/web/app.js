@@ -656,6 +656,7 @@
     initCropEvents();
     initAppearance();
     initDownload();
+    initLoaderModal();
 
     document.getElementById('btn-account-appearance').addEventListener('click', function () {
       go('appearance');
@@ -781,12 +782,148 @@
         btn.addEventListener('click', function () {
           // 同时只跑一个安装任务，避免两个任务抢同一个仓库草稿
           if (dlInstalling) { return; }
-          call('installVersion', v.id);
+          openLoaderModal(v.id);
         });
       }
       row.appendChild(btn);
 
       box.appendChild(row);
+    });
+  }
+
+  // ---------------- 安装选项弹窗（原版 / 加载器） ----------------
+
+  var lmGame = null;      // 要装的游戏版本
+  var lmType = '';        // '' = 原版，其余是 patchId
+  var lmVersion = null;   // 选中的加载器版本
+  var lmVersions = null;  // 当前类型的版本数组，null = 还没拉
+
+  var LM_MAX = 200;
+
+  function openLoaderModal(gameVersion) {
+    lmGame = gameVersion;
+    lmType = '';
+    lmVersion = null;
+    lmVersions = null;
+
+    document.getElementById('lm-title').textContent = '安装 ' + gameVersion;
+    document.getElementById('lm-list').hidden = true;
+    document.getElementById('lm-list').innerHTML = '';
+    document.getElementById('lm-tip').textContent =
+      '原版只装游戏本体。选加载器会在同一个实例里一起装好，之后可以直接拖模组进去。';
+    document.getElementById('lm-confirm').textContent = '安装';
+    document.getElementById('lm-confirm').disabled = false;
+
+    var tabs = document.querySelectorAll('#lm-tabs button');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-loader') === '');
+    }
+
+    document.getElementById('loader-modal').classList.remove('hidden');
+  }
+
+  function closeLoaderModal() {
+    document.getElementById('loader-modal').classList.add('hidden');
+  }
+
+  function selectLoaderType(type) {
+    lmType = type;
+    lmVersion = null;
+    lmVersions = null;
+
+    var tabs = document.querySelectorAll('#lm-tabs button');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].classList.toggle('active', tabs[i].getAttribute('data-loader') === type);
+    }
+
+    var list = document.getElementById('lm-list');
+    var confirm = document.getElementById('lm-confirm');
+
+    if (!type) {
+      list.hidden = true;
+      list.innerHTML = '';
+      confirm.disabled = false;
+      confirm.textContent = '安装原版';
+      document.getElementById('lm-tip').textContent =
+        '原版只装游戏本体。选加载器会在同一个实例里一起装好，之后可以直接拖模组进去。';
+      return;
+    }
+
+    list.hidden = false;
+    list.innerHTML = '';
+    list.appendChild(el('div', 'lm-empty', '正在拉取版本列表…'));
+    confirm.disabled = true;
+    confirm.textContent = '安装';
+    document.getElementById('lm-tip').textContent =
+      '会创建实例「' + lmGame + '-' + type + '-<加载器版本>」，与原版并存。';
+    call('requestLoaderVersions', lmGame, type);
+  }
+
+  function renderLoaderVersions() {
+    var list = document.getElementById('lm-list');
+    var confirm = document.getElementById('lm-confirm');
+    list.innerHTML = '';
+
+    if (!lmVersions || !lmVersions.length) {
+      list.appendChild(el('div', 'lm-empty', '这个游戏版本没有可用的加载器版本。'));
+      confirm.disabled = true;
+      return;
+    }
+
+    lmVersions.slice(0, LM_MAX).forEach(function (v) {
+      var row = el('div', 'lm-item' + (lmVersion === v ? ' on' : ''));
+      row.appendChild(el('span', null, v));
+      row.appendChild(el('span', 'lm-radio'));
+      row.addEventListener('click', function () {
+        lmVersion = v;
+        renderLoaderVersions();
+        confirm.disabled = false;
+      });
+      list.appendChild(row);
+    });
+
+    if (lmVersions.length > LM_MAX) {
+      list.appendChild(el('div', 'lm-empty', '还有 ' + (lmVersions.length - LM_MAX) + ' 个更早的版本未显示。'));
+    }
+  }
+
+  function confirmInstall() {
+    if (!lmGame) { return; }
+    var game = lmGame;
+    var type = lmType;
+    var version = lmVersion;
+    closeLoaderModal();
+
+    if (!type) {
+      dlInstalling = game;
+      renderDownloadList();
+      call('installVersion', game);
+      return;
+    }
+    if (!version) { return; }
+
+    var instanceName = game + '-' + type + '-' + version;
+    dlInstalling = instanceName;
+    renderDownloadList();
+    call('installLoader', game, type, version);
+  }
+
+  function initLoaderModal() {
+    var modal = document.getElementById('loader-modal');
+    if (!modal) { return; }
+
+    document.getElementById('lm-close').addEventListener('click', closeLoaderModal);
+    document.getElementById('lm-cancel').addEventListener('click', closeLoaderModal);
+    document.getElementById('lm-confirm').addEventListener('click', confirmInstall);
+
+    document.getElementById('lm-tabs').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-loader]');
+      if (b) { selectLoaderType(b.getAttribute('data-loader')); }
+    });
+
+    // 点遮罩关闭（点内容不关）
+    modal.addEventListener('click', function (e) {
+      if (e.target === modal) { closeLoaderModal(); }
     });
   }
 
@@ -1214,6 +1351,25 @@
     onVersions: function (json) {
       try { dlVersions = JSON.parse(json); } catch (e) { console.error('bad versions', e); return; }
       renderDownloadList();
+    },
+    onLoaderVersions: function (json) {
+      var data = null;
+      try { data = JSON.parse(json); } catch (e) { return; }
+      // 用户可能已经切到别的类型或别的版本，过期响应直接丢掉
+      if (!data || data.game !== lmGame || data.type !== lmType) { return; }
+      if (data.error) {
+        lmVersions = [];
+        renderLoaderVersions();
+        document.getElementById('lm-list').innerHTML = '';
+        document.getElementById('lm-list').appendChild(
+          el('div', 'lm-empty', '加载器版本拉取失败：' + data.error));
+        return;
+      }
+      lmVersions = data.versions || [];
+      // 默认选最新一个，省一次点击
+      lmVersion = lmVersions.length ? lmVersions[0] : null;
+      renderLoaderVersions();
+      if (lmVersion) { document.getElementById('lm-confirm').disabled = false; }
     },
     onInstallStage: function (json) {
       var data = null;

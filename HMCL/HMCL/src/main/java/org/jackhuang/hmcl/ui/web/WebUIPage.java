@@ -230,7 +230,13 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
             stage.setHeight(Integer.parseInt(parts[1].trim()));
         }
 
-        PauseTransition delay = new PauseTransition(Duration.millis(4500));
+        // 等待时长可调：异步拉清单/加载器列表的验收需要更长的窗口
+        long waitMs = 4500;
+        try {
+            waitMs = Long.parseLong(System.getProperty("hmcl.web.delay", "4500"));
+        } catch (NumberFormatException ignored) {
+        }
+        PauseTransition delay = new PauseTransition(Duration.millis(waitMs));
         delay.setOnFinished(event -> {
             try {
                 savePng(WebUIPage.this.snapshot(null, null), Path.of(shot));

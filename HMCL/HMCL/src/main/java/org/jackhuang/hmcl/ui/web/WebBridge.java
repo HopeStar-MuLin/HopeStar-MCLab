@@ -1002,6 +1002,16 @@ public final class WebBridge {
         download.installVersion(versionId);
     }
 
+    /// 拉某个游戏版本可用的加载器版本（fabric / quilt / forge / neoforge）
+    public void requestLoaderVersions(String gameVersion, String loaderType) {
+        download.requestLoaderVersions(gameVersion, loaderType);
+    }
+
+    /// 安装「游戏 + 加载器」到新实例
+    public void installLoader(String gameVersion, String loaderType, String loaderVersion) {
+        download.installLoader(gameVersion, loaderType, loaderVersion);
+    }
+
     // ==================== 窗口（自绘标题栏） ====================
 
     private double dragMouseX;

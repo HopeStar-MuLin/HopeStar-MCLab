@@ -21,6 +21,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import javafx.application.Platform;
 import org.jackhuang.hmcl.download.ComponentRemoteVersion;
+import org.jackhuang.hmcl.util.versioning.GameVersionNumber;
 import org.jackhuang.hmcl.setting.DownloadProviders;
 import org.jackhuang.hmcl.download.game.GameRemoteVersion;
 import org.jackhuang.hmcl.game.GameComponentType;
@@ -33,8 +34,12 @@ import org.jackhuang.hmcl.task.TaskListener;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.function.Consumer;
+
+import org.jetbrains.annotations.Nullable;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -126,49 +131,155 @@ final class DownloadService {
                 + JsonUtils.GSON.toJson(json) + ")"));
     }
 
+    // ==================== 加载器 ====================
+
+    /// 加载器版本缓存，key 是 `patchId@游戏版本`。
+    ///
+    /// <p>同时存下 {@link ComponentRemoteVersion} 对象本身——安装时要用它，
+    /// 而前端只传得回一个版本号字符串。只存字符串的话安装阶段还得再拉一次清单。
+    private final Map<String, List<ComponentRemoteVersion>> loaderVersions = new ConcurrentHashMap<>();
+
+    /// 请求某个游戏版本下的加载器版本列表。type 取 fabric / quilt / forge / neoforge。
+    void requestLoaderVersions(String gameVersion, String loaderType) {
+        GameComponentType type = GameComponentType.fromPatchId(loaderType);
+        if (type == null || !type.isModLoader()) {
+            pushLoaderVersions(gameVersion, loaderType, List.of(), "未知的加载器类型");
+            return;
+        }
+
+        GameVersionNumber target;
+        try {
+            target = GameVersionNumber.asGameVersion(gameVersion);
+        } catch (Exception e) {
+            pushLoaderVersions(gameVersion, loaderType, List.of(), "版本号无法解析");
+            return;
+        }
+
+        DownloadProviders.getDownloadProvider()
+                .getVersionsAsync(type, target, false)
+                .thenAcceptAsync(rawList -> {
+                    List<ComponentRemoteVersion> result = new ArrayList<>();
+                    for (ComponentRemoteVersion version : rawList) {
+                        // provider 有的分支会返回全量，这里再按游戏版本过滤一次
+                        if (target.equals(version.getGameVersion())) {
+                            result.add(version);
+                        }
+                    }
+                    loaderVersions.put(loaderType + "@" + gameVersion, result);
+                    pushLoaderVersions(gameVersion, loaderType, result, null);
+                })
+                .whenComplete(exception -> {
+                    if (exception != null) {
+                        LOG.warning("Failed to fetch " + loaderType + " versions", exception);
+                        pushLoaderVersions(gameVersion, loaderType, List.of(), String.valueOf(exception));
+                    }
+                })
+                .start();
+    }
+
+    private void pushLoaderVersions(String gameVersion, String loaderType,
+                                    List<ComponentRemoteVersion> list, String error) {
+        JsonArray array = new JsonArray();
+        for (ComponentRemoteVersion version : list) {
+            array.add(version.getSelfVersion());
+        }
+        JsonObject json = new JsonObject();
+        json.addProperty("game", gameVersion);
+        json.addProperty("type", loaderType);
+        json.addProperty("error", error);
+        json.add("versions", array);
+
+        String text = JsonUtils.GSON.toJson(json);
+        Platform.runLater(() -> push.accept("window.__hmcl && window.__hmcl.onLoaderVersions("
+                + JsonUtils.GSON.toJson(text) + ")"));
+    }
+
     // ==================== 安装 ====================
 
-    /// 安装一个原版游戏版本。装载器（Forge/Fabric）这层后续再叠加，
-    /// 现在的链路已经能产出一个可启动的实例。
+    /// 安装原版。
     void installVersion(String versionId) {
         if (versionId == null || versionId.isBlank()) {
             return;
         }
+        if (findGameVersion(versionId) == null) {
+            pushStage(versionId, "版本清单里没有 " + versionId, false, "unknown version");
+            return;
+        }
+        startBuild(new GameInstanceID(versionId), versionId, versionId,
+                builder -> builder.component(GameComponentType.GAME, versionId));
+    }
 
-        List<GameRemoteVersion> cached = versions;
-        if (cached == null) {
-            pushStage(versionId, "版本清单还没加载完，稍后重试", false, "no version list");
+    /// 安装「游戏 + 加载器」。实例名按 `<游戏版本>-<patchId>-<加载器版本>` 生成，
+    /// 与原版并存，不覆盖已有实例。
+    void installLoader(String gameVersion, String loaderType, String loaderVersion) {
+        if (gameVersion == null || loaderType == null || loaderVersion == null) {
             return;
         }
 
-        GameRemoteVersion target = null;
-        for (GameRemoteVersion version : cached) {
-            if (version.getGameVersion().toString().equals(versionId)) {
+        List<ComponentRemoteVersion> cached = loaderVersions.get(loaderType + "@" + gameVersion);
+        if (cached == null || cached.isEmpty()) {
+            pushStage(gameVersion, "加载器列表还没加载完，稍后重试", false, "no loader list");
+            return;
+        }
+
+        ComponentRemoteVersion target = null;
+        for (ComponentRemoteVersion version : cached) {
+            if (loaderVersion.equals(version.getSelfVersion())) {
                 target = version;
                 break;
             }
         }
         if (target == null) {
-            pushStage(versionId, "版本清单里没有 " + versionId, false, "unknown version");
+            pushStage(gameVersion, "列表里没有这个加载器版本", false, "unknown loader version");
             return;
         }
 
+        String instanceName = gameVersion + "-" + loaderType + "-" + loaderVersion;
+        GameInstanceID instanceId = new GameInstanceID(instanceName);
+        ComponentRemoteVersion loader = target;
+
+        startBuild(instanceId, instanceName, gameVersion + " + " + loaderType + " " + loaderVersion, builder -> {
+            builder.component(GameComponentType.GAME, gameVersion);
+            builder.component(loader);
+            // 带加载器的实例通常要装模组，按 HMCL 的设置决定是否开隔离
+            if (GameDirectoryManager.getSelectedRepository().shouldIsolateNewInstance(true)) {
+                builder.enableIsolation();
+            }
+        });
+    }
+
+    private @Nullable GameRemoteVersion findGameVersion(String versionId) {
+        List<GameRemoteVersion> cached = versions;
+        if (cached == null) {
+            return null;
+        }
+        for (GameRemoteVersion version : cached) {
+            if (version.getGameVersion().toString().equals(versionId)) {
+                return version;
+            }
+        }
+        return null;
+    }
+
+    /// 创建实例并跑安装任务。原版与加载器共用这一段，
+    /// 差别只在 `configure` 里挂了几个组件。
+    private void startBuild(GameInstanceID instanceId, String taskId, String label,
+                            Consumer<HMCLGameBuilder> configure) {
         var repository = GameDirectoryManager.getSelectedRepository();
-        if (repository.findInstance(new GameInstanceID(versionId)) != null) {
-            pushStage(versionId, versionId + " 已经装过了", false, "instance exists");
+        if (repository.findInstance(instanceId) != null) {
+            pushStage(taskId, instanceId + " 已经装过了", false, "instance exists");
             return;
         }
 
-        pushStage(versionId, "准备安装 " + versionId + "…", false, null);
+        pushStage(taskId, "准备安装 " + label + "…", false, null);
 
         try {
             var dependencyManager = repository.getDependency(DownloadProviders.getDownloadProvider());
-            GameInstanceID instanceId = new GameInstanceID(versionId);
 
             // try-with-resources 关闭的是「构建器」而不是任务：buildAsync() 已把
             // 仓库草稿的所有权转移给任务，这里关掉是安全且必须的（否则草稿一直占着）。
             try (HMCLGameBuilder builder = dependencyManager.newGameBuilder(instanceId)) {
-                builder.component(GameComponentType.GAME, versionId);
+                configure.accept(builder);
                 Task<?> buildTask = builder.buildAsync();
 
                 TaskExecutor executor = buildTask.executor();
@@ -177,7 +288,7 @@ final class DownloadService {
                     public void onRunning(Task<?> task) {
                         String stage = humanStage(task.getName());
                         if (stage != null && !stage.isEmpty()) {
-                            pushStage(versionId, stage, false, null);
+                            pushStage(taskId, stage, false, null);
                         }
                     }
                 });
@@ -186,7 +297,7 @@ final class DownloadService {
                     if (event.isFailed()) {
                         // TaskEvent 只带 failed 标记，真正的异常在 executor 上
                         Exception cause = executor.getException();
-                        pushStage(versionId, "安装失败：" + (cause != null ? cause : "未知错误"),
+                        pushStage(taskId, "安装失败：" + (cause != null ? cause : "未知错误"),
                                 false, String.valueOf(cause));
                         return;
                     }
@@ -196,17 +307,17 @@ final class DownloadService {
                     } catch (Exception e) {
                         LOG.warning("Failed to select the new instance", e);
                     }
-                    pushStage(versionId, "安装完成", true, null);
+                    pushStage(taskId, "安装完成", true, null);
                     // 实例列表变了，让页面重新拉一次状态
                     push.accept("window.__hmcl && window.__hmcl.onInstallFinished("
-                            + JsonUtils.GSON.toJson(versionId) + ")");
+                            + JsonUtils.GSON.toJson(taskId) + ")");
                 }));
 
                 executor.start();
             }
         } catch (Exception e) {
-            LOG.warning("Failed to install " + versionId, e);
-            pushStage(versionId, "安装失败：" + e.getMessage(), false, String.valueOf(e));
+            LOG.warning("Failed to build " + instanceId, e);
+            pushStage(taskId, "安装失败：" + e.getMessage(), false, String.valueOf(e));
         }
     }
 
@@ -225,15 +336,22 @@ final class DownloadService {
             return null;
         }
 
+        // 注意：任务名有些带 Task 后缀（类名），有些是 setName 过的裸名（FabricInstall 这种），
+        // 两套都要覆盖，否则界面会漏出一半英文一半中文
         switch (raw) {
-            case "GameInstanceJsonDownloadTask": return "读取版本信息";
-            case "GameInstallTask": return "解析版本依赖";
-            case "GameDownloadTask": return "下载游戏本体";
-            case "GameLibrariesTask": return "下载依赖库";
-            case "GameAssetIndexDownloadTask": return "获取资源索引";
-            case "GameAssetDownloadTask": return "下载游戏资源";
-            case "GameVerificationFixTask": return "校验并补全文件";
-            case "LibraryDownloadTask": return "下载依赖库";
+            case "GameInstanceJsonDownloadTask", "GameInstanceJsonDownload": return "读取版本信息";
+            case "GameInstallTask", "GameInstall": return "解析版本依赖";
+            case "GameDownloadTask", "GameDownload": return "下载游戏本体";
+            case "GameLibrariesTask", "GameLibraries": return "下载依赖库";
+            case "GameAssetIndexDownloadTask", "GameAssetIndexDownload": return "获取资源索引";
+            case "GameAssetDownloadTask", "GameAssetDownload": return "下载游戏资源";
+            case "GameVerificationFixTask", "GameVerificationFix": return "校验并补全文件";
+            case "LibraryDownloadTask", "LibraryDownload": return "下载依赖库";
+            case "FabricInstall": return "安装 Fabric";
+            case "QuiltInstall": return "安装 Quilt";
+            case "ForgeInstall": return "安装 Forge";
+            case "NeoForgeInstall": return "安装 NeoForge";
+            case "GameBuilder": return "整理实例文件";
             default: break;
         }
 

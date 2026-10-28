@@ -282,6 +282,33 @@
   </main>
 </div>
 
+<!-- ================= 安装选项（原版 / 加载器） ================= -->
+<div class="modal hidden" id="loader-modal">
+  <div class="modal-body card lm-body">
+    <div class="modal-head">
+      <h3 id="lm-title">安装 1.21.5</h3>
+      <button class="icon-btn" id="lm-close">✕</button>
+    </div>
+
+    <div class="seg lm-tabs" id="lm-tabs">
+      <button data-loader="" class="active">原版</button>
+      <button data-loader="fabric">Fabric</button>
+      <button data-loader="quilt">Quilt</button>
+      <button data-loader="forge">Forge</button>
+      <button data-loader="neoforge">NeoForge</button>
+    </div>
+
+    <p class="muted small lm-tip" id="lm-tip">原版只装游戏本体。选加载器会在同一个实例里一起装好，之后可以直接拖模组进去。</p>
+
+    <div class="lm-list" id="lm-list" hidden></div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="lm-cancel">取消</button>
+      <button class="btn primary" id="lm-confirm">安装</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================= 图标选择器 ================= -->
 <div class="modal hidden" id="icon-modal">
   <div class="modal-body card">

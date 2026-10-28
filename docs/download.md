@@ -82,10 +82,65 @@ switch (raw) { case "GameLibrariesTask": return "下载依赖库"; ... }
 `-Dhmcl.web.*` 这组覆盖现在与截图解耦（`applyOverrides()` 在截图分支之前统一执行），
 所以不带 `-Dhmcl.web.shot` 也能用它们做交互验证。
 
-## 六、下一步
+## 六、加载器（本轮已接）
 
-- 加载器（Forge / NeoForge / Fabric / Quilt）：`builder.component(componentType, version)` 已经支持多组件，
-  缺的是各加载器的远端版本列表接口（`ComponentRemoteVersionList`）和 UI 里的第二层选择
+### 入口
+
+点版本行的「安装」不再直接开装，而是弹一个选项窗：
+
+```
+安装 26.3
+[ 原版 ][ Fabric ][ Quilt ][ Forge ][ NeoForge ]
+  ↓ 选任一加载器
+  列出该游戏版本可用的加载器版本（默认选最新）
+[ 取消 ][ 安装 ]
+```
+
+### 后端
+
+```java
+// 列表：统一入口，provider 内部按类型走不同数据源
+provider.getVersionsAsync(type, GameVersionNumber.asGameVersion(gameVersion), false)
+
+// 安装：同一个 builder，挂两个组件
+builder.component(GameComponentType.GAME, gameVersion);
+builder.component(loaderRemoteVersion);
+if (repository.shouldIsolateNewInstance(true)) builder.enableIsolation();
+```
+
+关键点：
+
+1. **版本对象要留在内存里**。前端只传得回一个版本号字符串，安装阶段必须拿到
+   `ComponentRemoteVersion` 本体，否则得再拉一次清单。缓存 key 是 `patchId@游戏版本`。
+2. **实例名 `<游戏版本>-<patchId>-<加载器版本>`**，例如 `1.21.5-fabric-0.20.1`，
+   与原版并存、不覆盖。
+3. 加载器列表 `provider` 有的分支返回全量，必须再按 `getGameVersion()` 过滤一次。
+
+### 实测（Fabric）
+
+```
+[download] 1.21.5-fabric-0.20.1 | 读取版本信息
+[download] 1.21.5-fabric-0.20.1 | 下载游戏本体
+[download] 1.21.5-fabric-0.20.1 | 获取资源索引
+[download] 1.21.5-fabric-0.20.1 | 下载游戏资源
+[download] 1.21.5-fabric-0.20.1 | 安装 Fabric
+[download] 1.21.5-fabric-0.20.1 | 下载依赖库      （Fabric 那批库）
+[download] 1.21.5-fabric-0.20.1 | 安装完成 | done
+```
+
+产物核对：`1.21.5-fabric-0.20.1.json` 128,930 B / 121 个 libraries，
+其中 `net.fabricmc:fabric-loader:0.20.1`、`net.fabricmc:intermediary:1.21.5`、
+`mainClass = net.fabricmc.loader.impl.launch.knot.KnotClient` —— 是可直接启动的实例。
+
+### 阶段名的第二种坑
+
+同一个任务有两种名字：类名 `GameLibrariesTask`，和 `setName` 过的裸名 `FabricInstall`。
+只映射一种的话界面会一半中文一半英文。现在两套都覆盖。
+
+## 七、下一步
+
 - 整合包：`ModpackInstallWizardProvider` 那条链路，涉及 zip 解析与依赖下载
 - 真实进度百分比：`Task` 没有统一进度源，需要按 `TaskExecutor` 的 stage 数与已完成数估算，
   或者接入 `TaskListener` 之外的文件级进度
+- 实例体积：现在卡片上的「184 B」只统计实例目录，不含共享的 assets / libraries，
+  数字小得让人误解，需要改成「实例 + 共享」或者标注口径

@@ -388,8 +388,11 @@ body.rail-open .rail-toggle .ico-expand { display: block; }
 .hero .btn.ghost:hover { background: rgba(255, 255, 255, .16); }
 
 /* 页面内的主色按钮（外观页「应用到账号」不在渐变底上，用真 accent） */
-.ap-left .btn.primary { background: var(--accent); color: #fff; }
-.ap-left .btn.primary:hover { filter: brightness(1.06); }
+.ap-left .btn.primary,
+.modal .btn.primary { background: var(--accent); color: #fff; }
+.ap-left .btn.primary:hover,
+.modal .btn.primary:hover { filter: brightness(1.06); }
+.modal .btn.primary:disabled { opacity: .5; cursor: default; }
 
 .link { border: 0; background: transparent; color: var(--accent); font-size: 13px; cursor: pointer; font-family: inherit; }
 .link:hover { text-decoration: underline; }
@@ -980,6 +983,41 @@ body[data-theme="dark"] .dl-badge.old { color: #c4b5fd; }
   .dl-row .dl-date { display: none; }
   .dl-search { max-width: none; }
 }
+
+/* ---------------- 安装选项弹窗 ---------------- */
+
+.lm-body { width: 460px; }
+
+.lm-tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 10px; }
+.lm-tip { margin: 0 0 10px; line-height: 1.6; }
+
+/* 版本列表：固定高度，避免 Forge 那种几百个版本把弹窗顶穿 */
+.lm-list {
+  max-height: 240px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-2);
+  padding: 4px;
+}
+.lm-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  font-size: 12.5px; cursor: pointer;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.lm-item:hover { background: var(--surface-3); }
+.lm-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.lm-item .lm-radio {
+  width: 13px; height: 13px; flex: 0 0 13px; border-radius: 50%;
+  border: 2px solid var(--border-strong);
+}
+.lm-item.on .lm-radio {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 3px, transparent 3.1px);
+}
+.lm-empty { padding: 16px 10px; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+.lm-list::-webkit-scrollbar { width: 8px; }
+.lm-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
 
 /* ============================================================================
    分辨率自适应
