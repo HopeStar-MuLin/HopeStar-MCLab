@@ -535,7 +535,9 @@ body.rail-open .rail-toggle .ico-expand { display: block; }
 
 /* ---------------- 表格 ---------------- */
 
-.table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+/* 和 .dl-list 同一个坑：长列表 + 圆角裁剪会拖垮滚动 */
+.table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: visible; }
+.table .table-row.head { border-radius: var(--r-lg) var(--r-lg) 0 0; }
 .table-row {
   display: grid;
   grid-template-columns: minmax(120px, 1.7fr) minmax(96px, 1fr) 56px 84px 92px;
@@ -546,6 +548,7 @@ body.rail-open .rail-toggle .ico-expand { display: block; }
 }
 .table-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-row:last-child { border-bottom: 0; }
+.table-row { contain: layout style; }
 .table-row.head { color: var(--muted); font-size: 12px; background: var(--surface-2); }
 
 /* ---------------- 弹窗 ---------------- */
@@ -945,8 +948,13 @@ body[data-theme="dark"] .login-card[data-login="authlib"] .login-ico { color: #4
 .dl-list {
   background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--r-lg);
-  overflow: hidden;
+  /* 🔴 这里千万不能写 overflow:hidden。列表高度四五千像素，圆角 + 裁剪 = 每帧
+     重新生成一次整块裁剪蒙版，实测滚动帧率从 70 掉到 48（基线 50）。
+     改成 visible，靠首行自己的圆角把上下两个角补回来。 */
+  overflow: visible;
 }
+/* 裁剪没了，首行要自己带圆角，否则表头的底色会顶出卡片的圆角 */
+.dl-list .dl-row.head { border-radius: var(--r-lg) var(--r-lg) 0 0; }
 .dl-row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) 92px 108px 76px;
@@ -956,6 +964,10 @@ body[data-theme="dark"] .login-card[data-login="authlib"] .login-ico { color: #4
   font-size: 13px;
 }
 .dl-row:last-child { border-bottom: 0; }
+/* contain: layout style —— 每行只在自己盒子里布局，滚动时不用重算整张列表。
+   ⚠️ 不要用 contain: paint（会把圆角/阴影 clipping 回来），也不要指望
+   content-visibility: auto：这个 WebKit 版本上反而更慢（实测 41fps）。 */
+.dl-row { contain: layout style; }
 .dl-row.head {
   font-size: 12px; color: var(--muted); background: var(--surface-2);
   position: sticky; top: 0; z-index: 2;

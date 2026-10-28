@@ -158,6 +158,82 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         report.play();
     }
 
+    /// 滚动帧率探针：程序化滚动主滚动容器，采样 rAF 间隔。
+    ///
+    /// <p>和 {@link #measureFrameRate()} 的区别：那个测的是「动一个 120px 的方块」，
+    /// 这个测的是**整页重绘**——滚动会让 WebView 重新光栅化进入视口的区域，
+    /// 才是用户真正抱怨的「滑动卡」。
+    ///
+    /// <p>会先等内容长到能滚（列表异步加载），再开始测。输出里 `long` 是超过 32ms
+    /// 的帧数，这个数比平均帧率更能反映手感。
+    private void measureScrollRate() {
+        String probe = """
+                (function(){
+                  var el = document.getElementById('page-body');
+                  if (!el) { window.__scrollfps = { error: 'no #page-body' }; return; }
+
+                  var waited = 0;
+                  function ready(){
+                    return el.scrollHeight - el.clientHeight > 200;
+                  }
+
+                  function start(){
+                    var range = el.scrollHeight - el.clientHeight;
+                    el.scrollTop = 0;
+
+                    var t0 = 0, last = 0, frames = 0, worst = 0, sum = 0, long = 0;
+                    function tick(t){
+                      if (!t0) { t0 = t; last = t; }
+                      var dt = t - last; last = t;
+                      frames++; sum += dt;
+                      if (dt > worst) worst = dt;
+                      if (dt > 32) long++;
+
+                      var progress = (t - t0) / 3000;
+                      el.scrollTop = Math.min(range, progress * range * 1.08);
+
+                      if (t - t0 < 3000) { requestAnimationFrame(tick); }
+                      else {
+                        window.__scrollfps = {
+                          avg: +(frames/((t-t0)/1000)).toFixed(1),
+                          worst: +worst.toFixed(1),
+                          meanGap: +(sum/frames).toFixed(2),
+                          long: long,
+                          range: range,
+                          rows: el.querySelectorAll('.dl-row, .news-item, .instance-card').length
+                        };
+                      }
+                    }
+                    requestAnimationFrame(tick);
+                  }
+
+                  (function waitForContent(){
+                    // 内容到了还要再等 4 秒：启动阶段还有新闻、更新检查、authlib 元数据
+                    // 在跑，这时候测出来的卡顿一半不属于滚动
+                    if (ready()) { setTimeout(start, 4000); return; }
+                    waited += 200;
+                    if (waited > 12000) {
+                      window.__scrollfps = { error: 'no scrollable content', waited: waited,
+                                             range: el.scrollHeight - el.clientHeight };
+                      return;
+                    }
+                    setTimeout(waitForContent, 200);
+                  })();
+                })();
+                """;
+        webView.getEngine().executeScript(probe);
+
+        // 12 秒等数据 + 4 秒静置 + 3 秒测量 + 余量
+        var report = new PauseTransition(Duration.millis(20000));
+        report.setOnFinished(event -> {
+            Object result = webView.getEngine().executeScript(
+                    "window.__scrollfps ? JSON.stringify(window.__scrollfps) : 'null'");
+            LOG.info("Web UI scroll frame rate: " + result);
+            System.out.println("WEB SCROLLFPS " + result);
+        });
+        report.play();
+    }
+
     /// 设计尺寸：窗口默认按这个尺寸开，屏幕装不下时按比例收。
     private static final double DESIGN_WIDTH = 1280;
     private static final double DESIGN_HEIGHT = 860;
@@ -208,6 +284,9 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         // 用来判断「卡」到底是动画本身的成本，还是渲染管线的问题（而不是凭感觉猜）
         if (Boolean.getBoolean("hmcl.web.fps")) {
             measureFrameRate();
+        }
+        if (Boolean.getBoolean("hmcl.web.scrollfps")) {
+            measureScrollRate();
         }
 
         // 让前端知道桥已经挂上，避免时序竞争

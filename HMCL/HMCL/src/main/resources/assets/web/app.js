@@ -705,7 +705,9 @@
   var dlQuery = '';
   var dlInstalling = null;
 
-  var DL_MAX_ROWS = 300;      // 清单有 900+ 条，全渲染会卡；搜索能覆盖剩下的
+  // 清单有 900+ 条：全渲染会明显拖慢滚动（节点多一倍，滚动时布局与绘制都翻倍）。
+  // 150 条足够覆盖「最新几个正式版」，更早的用搜索。
+  var DL_MAX_ROWS = 150;
 
   function typeLabel(type) {
     if (type === 'release') { return '正式版'; }

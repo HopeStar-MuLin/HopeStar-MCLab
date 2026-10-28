@@ -113,3 +113,86 @@ java --module-path webui-shell/lib --add-modules javafx.controls,javafx.web,java
 ```
 
 `worst` 是要盯的数：它一旦超过 100ms，用户就会说「卡」。
+
+---
+
+## 八、滚动帧率：从 46fps 修到 64fps（本轮）
+
+### 先做了测量，不是凭感觉改
+
+新增探针 `-Dhmcl.web.scrollfps=true`：等列表有内容 → 静置 4 秒（避开启动期的新闻/更新检查）→
+用 `requestAnimationFrame` 驱动 `scrollTop` 滚 3 秒，采样每帧间隔。
+
+```bash
+java ... -Dhmcl.ui.web=true -Dhmcl.web.page=download \
+     -Dhmcl.web.scrollfps=true -Dhmcl.web.delay=24000 -jar dist/HMCL.jar
+# WEB SCROLLFPS {"avg":64.7,"worst":67,"meanGap":15.46,"long":27,"range":4724,"rows":112}
+```
+
+`long` = 超过 32ms 的帧数，比平均帧率更接近手感。
+
+### 真凶不是「元素太多」，是圆角裁剪
+
+下载页 112 行、内容高 4724px。逐个变量做对照（同一探针、同样静置）：
+
+| 试验 | 改动 | avg | worst | long |
+|---|---|---|---|---|
+| 基线 | — | **50.6** | 103 | 46 |
+| B | 去 sticky + `overflow:clip` + 去圆角 + `contain:paint` | 71.4 | 152 | 9 |
+| C | 只加 `contain:paint` | 47.5 | 118 | 42 |
+| D | `overflow:clip` + **去圆角** | 66.4 | 107 | 9 |
+| E | `overflow:clip` **保留圆角** | 48.1 | 93 | 43 |
+| F | `overflow:visible` 保留圆角 | 67.0 | 145 | 5 |
+| G | 只去 sticky 表头 | 49.5 | 86 | 43 |
+| H | 行自绘边框+圆角 | 66.6 | 109 | 10 |
+| I | 只加 `content-visibility:auto` | **41.7** | 94 | 38 |
+| J | content-visibility + 不裁剪 | 60.6 | 133 | 17 |
+| K | 不裁剪 + 行 `contain:layout style` | **70.1** | 78 | 8 |
+| L | 不裁剪 + `page-body{will-change:transform}` | 63.3 | 116 | 11 |
+
+结论三条：
+
+1. **`overflow:hidden` + `border-radius` 的长列表是主因**（D vs E：66.4 vs 48.1）。
+   圆角裁剪会对整块 4724px 的内容生成一次裁剪蒙版，滚动时每帧重做。
+2. **`content-visibility: auto` 在这个 WebKit 上反而更慢**（I：41.7，比基线还低）。
+   它对每个新进入视口的行做一次布局计算，滚动时等于每帧都在布局。
+3. `contain: paint` 没用（C），但 `contain: layout style` 有用（K，+4fps，worst 从 103 → 78）。
+
+### 落地的改动
+
+```css
+.dl-list, .table { overflow: visible; }          /* 不再对长内容做圆角裁剪 */
+.dl-list .dl-row.head,
+.table .table-row.head { border-radius: 16px 16px 0 0; }   /* 圆角改由首行承担 */
+.dl-row, .table-row { contain: layout style; }   /* 行内布局互不影响 */
+```
+
+另外把版本列表渲染上限从 300 行降到 150 行（更多用搜索）。
+
+### 最终对照（同样静置条件，各两次）
+
+| 版本 | avg | worst | long |
+|---|---|---|---|
+| 旧样式（注入回退） | 46.1 / 45.5 | 81 / 79 | 41 / 40 |
+| 新样式 | **64.7 / 63.3** | 67 / 54 | 27 / 31 |
+
+**吞吐 +39%，掉帧从 40 降到 28。**
+
+### 剩下的天花板在哪
+
+`window.devicePixelRatio = 2`。1366×768 的逻辑窗口，WebView 实际光栅化的是
+**2732×1536 个物理像素**，而 JavaFX WebView 的内容光栅是 **CPU 软件渲染**
+（D3D 管线只负责把结果贴到屏幕，不做页面合成）。
+
+所以每滚一帧 = CPU 重画 420 万像素。这解释了为什么优化 CSS 到这里就收益递减：
+
+- 46 → 64fps 是「不再做无谓的整块裁剪」拿到的
+- 64 → 60fps 稳定（无 long frame）在这个渲染器上做不到，除非换渲染后端
+
+要真正拿到 GPU 合成的滚动，只有换 WebView 实现（JCEF / 系统 WebView2），
+代价是体积和集成复杂度——这条已经在 `docs/ui-stack-selection.md` 里权衡过，
+当前结论是「不值得为了滚动换掉整个 UI 宿主」。
+
+### 验收
+
+`docs/dl-after-perf.png`、`docs/instances-after-perf.png`（圆角/边框无退化）。
