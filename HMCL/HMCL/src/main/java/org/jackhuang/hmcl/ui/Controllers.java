@@ -294,6 +294,12 @@ public final class Controllers {
 
         StyleSheets.init(mainScene);
 
+        // 实验性 Web 界面：-Dhmcl.ui.web=true 时用 WebView 页面替换原主页
+        if (Boolean.getBoolean("hmcl.ui.web")) {
+            LOG.info("Web UI enabled, switching main page to WebView");
+            navigate(new org.jackhuang.hmcl.ui.web.WebUIPage());
+        }
+
         if (!Architecture.SYSTEM_ARCH.isX86() && SettingsManager.userState().platformPromptVersionProperty().get() < 1) {
             Runnable continueAction = () -> {
                 UserState userState = userState();

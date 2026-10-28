@@ -38,7 +38,7 @@ import java.nio.file.Path;
  * @author Glavo
  */
 public final class JavaFXUtils {
-    public static final String[] MODULES = {"base", "graphics", "controls"};
+    public static final String[] MODULES = {"base", "graphics", "controls", "web", "media"};
 
     private static void addDependencies(Project rootProject) {
         try {

@@ -82,7 +82,7 @@ git log --oneline --graph
 | 自编译 + exe 打包 | 已实现 | `docs/HMCL-fork-notes.md` |
 | UI 技术选型（WebView 路线） | 已定方案 | `docs/ui-stack-selection.md` |
 | WebView 原型 | 可运行 | `webui-shell/`，明暗两套主题 |
-| P0：WebView 接进 HMCL（`-Dhmcl.ui.web=true`） | 未开始 | 下一步 |
+| P0：WebView 接进 HMCL（首页 + 账号） | 已实现 | `docs/web-ui-p0.md`，`-Dhmcl.ui.web=true` 启用 |
 
 ## 许可
 

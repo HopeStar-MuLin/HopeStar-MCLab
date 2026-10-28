@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Launcher</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body data-theme="light">
+
+<div class="app">
+  <!-- 侧栏 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text"><strong>MCLab</strong><span>Launcher</span></div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-page="home">
+        <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>主页</span>
+      </button>
+      <button class="nav-item" data-page="instances">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 11h16v4H4zM4 17h10v4H4z"/></svg>
+        <span>实例</span>
+      </button>
+      <button class="nav-item" data-page="download">
+        <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 17.8 6.1 10.9l1.4-1.4L11 13zM5 19h14v2H5z"/></svg>
+        <span>下载</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-.2 1.7 1.7 1.3-1.5 2.6-2-.8a7 7 0 0 1-1.5.9l-.3 2.1h-3l-.3-2.1a7 7 0 0 1-1.5-.9l-2 .8-1.5-2.6 1.7-1.3L3 12l.2-1.7L1.5 9 3 6.4l2 .8a7 7 0 0 1 1.5-.9L6.8 4h3l.3 2.1a7 7 0 0 1 1.5.9l2-.8L15 8.8l-1.7 1.3z"/></svg>
+        <span>设置</span>
+      </button>
+    </nav>
+
+    <!-- 左下角账号 -->
+    <button class="account-chip" id="account-chip">
+      <img class="avatar" id="chip-avatar" alt="">
+      <span class="account-meta">
+        <strong id="chip-name">未登录</strong>
+        <span id="chip-channel">点击添加账号</span>
+      </span>
+    </button>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <header class="topbar">
+      <h1 id="page-title">主页</h1>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="btn-theme" title="切换主题">
+          <svg viewBox="0 0 24 24" class="icon-moon"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+          <svg viewBox="0 0 24 24" class="icon-sun"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 2h2v3h-2zm0 17h2v3h-2zM2 11h3v2H2zm17 0h3v2h-3zM4.2 5.6 5.6 4.2l2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-refresh" title="刷新">
+          <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ================= 主页 ================= -->
+      <section class="page active" id="page-home">
+        <div class="hero" id="hero">
+          <img class="hero-icon" id="hero-icon" alt="">
+          <div class="hero-main">
+            <div class="hero-title-row">
+              <h2 id="hero-name">没有实例</h2>
+              <span class="badge" id="hero-loader">原版</span>
+              <span class="badge soft" id="hero-modpack" hidden>整合包</span>
+            </div>
+            <p class="hero-sub" id="hero-sub">先去下载一个游戏版本</p>
+            <div class="hero-meta" id="hero-meta"></div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn primary" id="btn-launch">启动游戏</button>
+            <button class="btn ghost" id="btn-folder">打开目录</button>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h3>实例 <span class="muted small" id="instance-count"></span></h3>
+          <button class="link" data-page="instances">查看全部</button>
+        </div>
+        <div class="grid" id="instance-grid"></div>
+
+        <div class="section-head">
+          <h3>动态</h3>
+          <span class="muted small">来自 Mojang 官方更新日志</span>
+        </div>
+        <div class="list" id="news-list">
+          <div class="empty">正在加载…</div>
+        </div>
+      </section>
+
+      <!-- ================= 账号 ================= -->
+      <section class="page" id="page-accounts">
+        <div class="section-head">
+          <h3>当前账号</h3>
+        </div>
+        <div class="account-hero card" id="account-hero">
+          <img class="account-avatar" id="account-avatar" alt="">
+          <div class="account-info">
+            <h2 id="account-name">未登录</h2>
+            <p class="muted" id="account-channel">选择一个登录方式</p>
+            <p class="muted small" id="account-uuid"></p>
+          </div>
+          <div class="account-actions">
+            <button class="btn ghost" id="btn-account-remove">删除账号</button>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h3>添加账号</h3>
+        </div>
+        <div class="grid three">
+          <button class="login-card" data-login="offline">
+            <strong>离线登录</strong>
+            <span>只填用户名，不验证</span>
+          </button>
+          <button class="login-card" data-login="microsoft">
+            <strong>微软登录</strong>
+            <span>正版账号，支持皮肤与披风</span>
+          </button>
+          <button class="login-card" data-login="authlib">
+            <strong>外置认证</strong>
+            <span>LittleSkin 等 authlib-injector 皮肤站</span>
+          </button>
+        </div>
+
+        <div class="section-head">
+          <h3>全部账号</h3>
+        </div>
+        <div class="account-list" id="account-list"></div>
+      </section>
+
+      <!-- ================= 实例 ================= -->
+      <section class="page" id="page-instances">
+        <div class="section-head"><h3>全部实例</h3></div>
+        <div class="table" id="instance-table"></div>
+      </section>
+
+      <!-- ================= 下载 ================= -->
+      <section class="page" id="page-download">
+        <div class="section-head"><h3>下载</h3></div>
+        <div class="grid three">
+          <div class="card pad"><h4>游戏版本</h4><p class="muted small">正式版 / 快照 / 远古版本</p><button class="btn ghost small" disabled>下一步实现</button></div>
+          <div class="card pad"><h4>模组加载器</h4><p class="muted small">Forge / NeoForge / Fabric / Quilt</p><button class="btn ghost small" disabled>下一步实现</button></div>
+          <div class="card pad"><h4>整合包</h4><p class="muted small">Modrinth / CurseForge</p><button class="btn ghost small" disabled>下一步实现</button></div>
+        </div>
+      </section>
+
+      <!-- ================= 设置 ================= -->
+      <section class="page" id="page-settings">
+        <div class="section-head"><h3>关于</h3></div>
+        <div class="card pad">
+          <p class="muted small" id="about-env"></p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ================= 图标选择器 ================= -->
+<div class="modal hidden" id="icon-modal">
+  <div class="modal-body card">
+    <div class="modal-head">
+      <h3>实例图标</h3>
+      <button class="icon-btn" id="icon-close">✕</button>
+    </div>
+
+    <div id="icon-step-pick">
+      <p class="muted small">选一个内置图标，或者用你自己的图片。</p>
+      <div class="icon-grid" id="icon-grid"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="icon-custom">选择图片…</button>
+      </div>
+    </div>
+
+    <div id="icon-step-crop" hidden>
+      <p class="muted small">拖动调整位置，滚轮缩放。最终会裁成正方形 256×256。</p>
+      <div class="crop-stage" id="crop-stage">
+        <canvas id="crop-canvas" width="360" height="360"></canvas>
+        <div class="crop-frame" id="crop-frame"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="crop-cancel">返回</button>
+        <button class="btn primary" id="crop-confirm">使用这张</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

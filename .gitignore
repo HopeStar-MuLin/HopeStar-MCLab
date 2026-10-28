@@ -42,3 +42,8 @@ Thumbs.db
 *.tmp
 *.bak
 *.orig
+
+# 演示 / 测试用的本地数据
+.hmcl-demo/
+.hmcl-test/
+.minecraft/
