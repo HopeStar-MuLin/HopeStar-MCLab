@@ -2,75 +2,101 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>Launcher</title>
+  <title>MCLab</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body data-theme="light">
 
-<header class="titlebar" data-drag>
+<!-- ============ 自绘标题栏 ============ -->
+<header class="titlebar">
   <div class="tb-brand">
     <div class="brand-mark"></div>
     <strong>MCLab</strong>
   </div>
-  <div class="tb-title" id="tb-title">主页</div>
+  <div class="tb-drag"></div>
   <div class="tb-actions">
-    <button class="icon-btn" id="btn-refresh" title="刷新">
-      <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
-    </button>
     <button class="icon-btn" id="btn-theme" title="切换主题">
       <svg viewBox="0 0 24 24" class="icon-moon"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
       <svg viewBox="0 0 24 24" class="icon-sun"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 2h2v3h-2zm0 17h2v3h-2zM2 11h3v2H2zm17 0h3v2h-3zM4.2 5.6 5.6 4.2l2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
     </button>
     <span class="tb-divider"></span>
-    <button class="win-btn" id="win-min" title="最小化">—</button>
-    <button class="win-btn" id="win-max" title="最大化">□</button>
-    <button class="win-btn danger" id="win-close" title="关闭">✕</button>
+    <button class="win-btn" id="win-min" title="最小化">
+      <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+    </button>
+    <button class="win-btn" id="win-max" title="最大化">
+      <svg viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1"/></svg>
+    </button>
+    <button class="win-btn close" id="win-close" title="关闭">
+      <svg viewBox="0 0 12 12"><path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8"/></svg>
+    </button>
   </div>
 </header>
 
-<div class="app">
-  <!-- 侧栏 -->
-  <aside class="sidebar">
-    <nav class="nav">
-      <button class="nav-item active" data-page="home">
+<div class="desk-body">
+
+  <!-- ============ 侧栏（图标条 ⇄ 展开） ============ -->
+  <aside class="rail" id="rail">
+    <nav class="rail-nav">
+      <button class="rail-item on" data-page="home" title="主页">
         <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
-        <span>主页</span>
+        <span class="rail-label">主页</span>
       </button>
-      <button class="nav-item" data-page="instances">
+      <button class="rail-item" data-page="instances" title="实例">
         <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 11h16v4H4zM4 17h10v4H4z"/></svg>
-        <span>实例</span>
+        <span class="rail-label">实例</span>
       </button>
-      <button class="nav-item" data-page="appearance">
+      <button class="rail-item" data-page="appearance" title="外观">
         <svg viewBox="0 0 24 24"><path d="M9 3h6l1 4 4 2-2 4-2-1v9H8v-9l-2 1-2-4 4-2z"/></svg>
-        <span>外观</span>
+        <span class="rail-label">外观</span>
       </button>
-      <button class="nav-item" data-page="download">
+      <button class="rail-item" data-page="download" title="下载">
         <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 17.8 6.1 10.9l1.4-1.4L11 13zM5 19h14v2H5z"/></svg>
-        <span>下载</span>
+        <span class="rail-label">下载</span>
       </button>
-      <button class="nav-item" data-page="settings">
+      <button class="rail-item" data-page="settings" title="设置">
         <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-.2 1.7 1.7 1.3-1.5 2.6-2-.8a7 7 0 0 1-1.5.9l-.3 2.1h-3l-.3-2.1a7 7 0 0 1-1.5-.9l-2 .8-1.5-2.6 1.7-1.3L3 12l.2-1.7L1.5 9 3 6.4l2 .8a7 7 0 0 1 1.5-.9L6.8 4h3l.3 2.1a7 7 0 0 1 1.5.9l2-.8L15 8.8l-1.7 1.3z"/></svg>
-        <span>设置</span>
+        <span class="rail-label">设置</span>
       </button>
     </nav>
 
-    <!-- 左下角账号 -->
-    <button class="account-chip" id="account-chip">
-      <img class="avatar" id="chip-avatar" alt="">
-      <span class="account-meta">
-        <strong id="chip-name">未登录</strong>
-        <span id="chip-channel">点击添加账号</span>
-      </span>
-    </button>
+    <div class="rail-foot">
+      <!-- 左下角账号 -->
+      <button class="account-chip" id="account-chip" title="账号管理">
+        <img class="avatar" id="chip-avatar" alt="">
+        <span class="chip-meta">
+          <strong id="chip-name">未登录</strong>
+          <span id="chip-channel">点击添加账号</span>
+        </span>
+      </button>
+      <button class="rail-item sm rail-toggle" id="rail-toggle" title="收起侧栏">
+        <svg viewBox="0 0 24 24" class="ico-collapse"><path d="M3 5h18v2H3zM3 11h12v2H3zM3 17h18v2H3zM19.6 10.3 22 12l-2.4 1.7z"/></svg>
+        <svg viewBox="0 0 24 24" class="ico-expand"><path d="M3 5h18v2H3zM3 11h12v2H3zM3 17h18v2H3zM15.4 10.3 13 12l2.4 1.7z"/></svg>
+        <span class="rail-label" id="rail-toggle-label">收起侧栏</span>
+      </button>
+    </div>
   </aside>
 
-  <!-- 主区 -->
-  <main class="main">
-    
-    <div class="content">
+  <!-- ============ 内容列 ============ -->
+  <main class="content">
+
+    <header class="page-head">
+      <div class="ph-icon" id="ph-icon"></div>
+      <div class="ph-text">
+        <div class="ph-title" id="ph-title">主页</div>
+        <div class="ph-desc" id="ph-desc"></div>
+      </div>
+      <div class="ph-acts">
+        <button class="kbd-btn" id="btn-refresh" title="刷新数据">
+          <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+          <span>刷新</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="page-body" id="page-body">
 
       <!-- ================= 主页 ================= -->
-      <section class="page active" id="page-home">
+      <section class="page on" id="page-home">
         <div class="hero" id="hero">
           <img class="hero-icon" id="hero-icon" alt="">
           <div class="hero-main">
@@ -92,7 +118,7 @@
           <h3>实例 <span class="muted small" id="instance-count"></span></h3>
           <button class="link" data-page="instances">查看全部</button>
         </div>
-        <div class="grid" id="instance-grid"></div>
+        <div class="grid instances" id="instance-grid"></div>
 
         <div class="section-head">
           <h3>动态</h3>
@@ -150,14 +176,16 @@
         <div class="appearance">
           <div class="ap-left">
             <div class="preview-slot" id="preview-slot"><img id="ap-preview" alt="皮肤预览"></div>
-            <div class="ap-toggles">
-              <div class="seg" id="model-seg">
-                <button data-model="default">宽体</button>
-                <button data-model="slim">纤体</button>
+            <div class="ap-side">
+              <div class="ap-toggles">
+                <div class="seg" id="model-seg">
+                  <button data-model="default">宽体</button>
+                  <button data-model="slim">纤体</button>
+                </div>
               </div>
+              <button class="btn primary block" id="ap-apply">应用到账号</button>
+              <p class="muted small" id="ap-hint"></p>
             </div>
-            <button class="btn primary" id="ap-apply">应用到账号</button>
-            <p class="muted small" id="ap-hint"></p>
           </div>
 
           <div class="ap-right">
@@ -185,7 +213,6 @@
 
       <!-- ================= 下载 ================= -->
       <section class="page" id="page-download">
-        <div class="section-head"><h3>下载</h3></div>
         <div class="grid three">
           <div class="card pad"><h4>游戏版本</h4><p class="muted small">正式版 / 快照 / 远古版本</p><button class="btn ghost small" disabled>下一步实现</button></div>
           <div class="card pad"><h4>模组加载器</h4><p class="muted small">Forge / NeoForge / Fabric / Quilt</p><button class="btn ghost small" disabled>下一步实现</button></div>

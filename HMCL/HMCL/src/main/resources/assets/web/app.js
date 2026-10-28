@@ -232,19 +232,22 @@
     var table = document.getElementById('instance-table');
     table.innerHTML = '';
     var head = el('div', 'table-row head');
-    ['实例', '版本 / 加载器', 'Java', '占用', '上次启动'].forEach(function (t) {
-      head.appendChild(el('span', null, t));
+    // 表头与单元格都带列类名：窄窗口下靠 .col-java 直接隐藏「Java」这一列，
+    // 而不是把五列硬压到 400px 宽互相压盖
+    [['实例', 'col-name'], ['版本 / 加载器', 'col-ver'], ['Java', 'col-java'],
+      ['占用', 'col-size'], ['上次启动', 'col-time']].forEach(function (c) {
+      head.appendChild(el('span', c[1], c[0]));
     });
     table.appendChild(head);
 
     (state.instances || []).forEach(function (inst) {
       var row = el('div', 'table-row');
-      row.appendChild(el('span', null, inst.name));
-      row.appendChild(el('span', 'muted',
+      row.appendChild(el('span', 'col-name', inst.name));
+      row.appendChild(el('span', 'muted col-ver',
         (inst.gameVersion || '') + ' / ' + (inst.loader || '原版') + (inst.loaderVersion ? ' ' + inst.loaderVersion : '')));
-      row.appendChild(el('span', 'muted', inst.java || '-'));
-      row.appendChild(el('span', 'muted', fmtSize(inst.size)));
-      row.appendChild(el('span', 'muted', fmtTime(inst.lastLaunch)));
+      row.appendChild(el('span', 'muted col-java', inst.java || '-'));
+      row.appendChild(el('span', 'muted col-size', fmtSize(inst.size)));
+      row.appendChild(el('span', 'muted col-time', fmtTime(inst.lastLaunch)));
       table.appendChild(row);
     });
   }
@@ -389,21 +392,45 @@
 
   // ---------------- 交互 ----------------
 
-  var titles = { home: '主页', instances: '实例', download: '下载', settings: '设置', accounts: '账号', appearance: '外观' };
+  /* 页面元数据：侧栏高亮、页头标题/描述/图标三处共用一份，
+     否则「侧栏点进实例、页头还写着主页」这种不同步迟早出现 */
+  var PAGES = {
+    home: { title: '主页', desc: '当前实例、快捷启动与官方动态' },
+    instances: { title: '实例', desc: '全部实例、加载器与磁盘占用' },
+    appearance: { title: '外观', desc: '皮肤与披风的本地衣柜，应用到账号才生效' },
+    download: { title: '下载', desc: '游戏版本、模组加载器与整合包' },
+    settings: { title: '设置', desc: '启动器信息与偏好' },
+    accounts: { title: '账号', desc: '离线 / 微软 / 外置认证' }
+  };
+
+  function setPageHead(page) {
+    var meta = PAGES[page] || { title: '', desc: '' };
+    var title = document.getElementById('ph-title');
+    var desc = document.getElementById('ph-desc');
+    var icon = document.getElementById('ph-icon');
+    if (title) { title.textContent = meta.title; }
+    if (desc) { desc.textContent = meta.desc; }
+    // 页头图标直接复刻对应侧栏项的图标，省一套素材也不会画得不一样
+    if (icon) {
+      var src = document.querySelector('.rail-nav .rail-item[data-page="' + page + '"] svg');
+      icon.innerHTML = src ? src.outerHTML : '';
+      var svg = icon.querySelector('svg');
+      if (svg) { svg.removeAttribute('width'); svg.removeAttribute('height'); }
+    }
+  }
 
   function go(page) {
-    var items = document.querySelectorAll('.nav-item');
+    var items = document.querySelectorAll('.rail-nav .rail-item');
     for (var i = 0; i < items.length; i++) {
-      items[i].classList.toggle('active', items[i].getAttribute('data-page') === page);
+      items[i].classList.toggle('on', items[i].getAttribute('data-page') === page);
     }
     var pages = document.querySelectorAll('.page');
     for (var j = 0; j < pages.length; j++) {
-      pages[j].classList.toggle('active', pages[j].id === 'page-' + page);
+      pages[j].classList.toggle('on', pages[j].id === 'page-' + page);
     }
-    var tb = document.getElementById('tb-title');
-    if (tb) { tb.textContent = titles[page] || ''; }
+    setPageHead(page);
 
-    var scroller = document.querySelector('.content');
+    var scroller = document.getElementById('page-body');
     if (scroller) { scroller.scrollTop = 0; }
 
     // 外观页的待机摆动靠 Java 侧定期重绘，离开页面要停掉
@@ -416,10 +443,67 @@
     }
   }
 
+  // ---------------- 侧栏开合（沿用「记住上次状态」的习惯） ----------------
+
+  var RAIL_KEY = 'mclab.rail.open';
+
+  function railOpen() {
+    return document.body.classList.contains('rail-open');
+  }
+
+  function setRail(open) {
+    document.body.classList.toggle('rail-open', open);
+    var btn = document.getElementById('rail-toggle');
+    var label = document.getElementById('rail-toggle-label');
+    if (btn) { btn.title = open ? '收起侧栏' : '展开侧栏'; }
+    if (label) { label.textContent = open ? '收起侧栏' : '展开侧栏'; }
+    try { localStorage.setItem(RAIL_KEY, open ? '1' : '0'); } catch (e) { /* 无痕模式无所谓 */ }
+  }
+
+  /* 窗口宽度决定 rail 是否强制收起。
+     900 是「侧栏摊开 196 之后内容区还剩不到 700」的临界点：
+     再窄就该把宽度让给内容，而不是继续摊着侧栏。 */
+  var NARROW = 900;
+  var narrow = false;
+
+  function syncNarrow() {
+    var now = window.innerWidth < NARROW;
+    if (now === narrow) { return; }
+    narrow = now;
+    document.body.classList.toggle('narrow', now);
+    // 从窄变宽时把用户原来选的展开状态还回来（窄的时候是被 CSS 压住的）
+    var btn = document.getElementById('rail-toggle');
+    if (btn) { btn.title = (!now && railOpen()) ? '收起侧栏' : '展开侧栏'; }
+  }
+
+  function initRail() {
+    var saved = null;
+    try { saved = localStorage.getItem(RAIL_KEY); } catch (e) { /* 忽略 */ }
+    // 默认展开：第一次打开就能看清每个入口叫什么
+    setRail(saved !== '0');
+
+    document.getElementById('rail-toggle').addEventListener('click', function () {
+      if (narrow) { return; }
+      setRail(!railOpen());
+    });
+
+    syncNarrow();
+    window.addEventListener('resize', syncNarrow);
+  }
+
   function initUi() {
-    var navs = document.querySelectorAll('.nav-item');
+    initRail();
+    setPageHead('home');
+
+    var navs = document.querySelectorAll('.rail-nav .rail-item');
     for (var i = 0; i < navs.length; i++) {
       navs[i].addEventListener('click', function () { go(this.getAttribute('data-page')); });
+    }
+
+    // 「查看全部」这类页面内跳转
+    var links = document.querySelectorAll('[data-page].link');
+    for (var n = 0; n < links.length; n++) {
+      links[n].addEventListener('click', function () { go(this.getAttribute('data-page')); });
     }
 
     document.getElementById('account-chip').addEventListener('click', function () { go('accounts'); });
@@ -438,7 +522,7 @@
     document.getElementById('win-max').addEventListener('click', function () { call('toggleMaximize'); });
     document.getElementById('win-close').addEventListener('click', function () { call('close'); });
     document.querySelector('.titlebar').addEventListener('dblclick', function (e) {
-      if (e.target.closest('.tb-actions')) { return; }
+      if (e.target.closest('.tb-actions') || e.target.closest('.tb-brand')) { return; }
       call('toggleMaximize');
     });
     initWindowDrag();
@@ -484,7 +568,8 @@
     var resizeEdge = null;
 
     document.querySelector('.titlebar').addEventListener('mousedown', function (e) {
-      if (e.button !== 0 || e.target.closest('.tb-actions')) { return; }
+      // 只有拖拽区能拖窗；品牌区和按钮区都不算（否则点 logo 会把窗口拽歪）
+      if (e.button !== 0 || !e.target.closest('.tb-drag')) { return; }
       dragging = true;
       call('dragStart', e.screenX, e.screenY);
     });

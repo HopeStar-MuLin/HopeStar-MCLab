@@ -23,14 +23,16 @@ import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.ListChangeListener;
 import javafx.concurrent.Worker;
+import javafx.geometry.Rectangle2D;
 import javafx.scene.image.Image;
 import javafx.scene.image.PixelReader;
-import javafx.scene.image.Image;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
 import org.jackhuang.hmcl.ui.skin.SkinCanvas;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
+import javafx.stage.Screen;
+import javafx.stage.Stage;
 import javafx.util.Duration;
 import netscape.javascript.JSObject;
 import org.jackhuang.hmcl.auth.Account;
@@ -116,6 +118,44 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         GameDirectoryManager.selectedInstanceProperty().addListener((observable, oldValue, newValue) -> pushLater());
     }
 
+    /// 设计尺寸：窗口默认按这个尺寸开，屏幕装不下时按比例收。
+    private static final double DESIGN_WIDTH = 1280;
+    private static final double DESIGN_HEIGHT = 860;
+    /// 最小尺寸：只保证「不超屏」，不跟着 0.92 一起折减
+    private static final double MIN_WIDTH = 960;
+    private static final double MIN_HEIGHT = 640;
+
+    /// 按屏幕可用区（{@link Screen#getVisualBounds()}，已排除任务栏）决定窗口尺寸并居中。
+    ///
+    /// <p>JavaFX 的屏幕坐标本身就是逻辑像素，不需要像 Tauri 那样再除一次 scale factor；
+    /// 直接用 `Math.min(设计尺寸, 可用区 * 0.92)` 就够。
+    ///
+    /// <p>两处容易踩的坑：
+    /// <ul>
+    ///   <li>不能用 {@code getBounds()}（含任务栏），低分屏上会正好顶到任务栏底下；</li>
+    ///   <li>最小尺寸不能也乘 0.92，否则 960×640 会被折成 883×589，
+    ///       用户能拖到比设计最小还小，布局就塌了。</li>
+    /// </ul>
+    public static void fitWindowToScreen(Stage stage) {
+        Rectangle2D area = Screen.getPrimary().getVisualBounds();
+
+        double minWidth = Math.min(MIN_WIDTH, area.getWidth() * 0.98);
+        double minHeight = Math.min(MIN_HEIGHT, area.getHeight() * 0.98);
+        stage.setMinWidth(minWidth);
+        stage.setMinHeight(minHeight);
+
+        double width = Math.max(minWidth, Math.min(DESIGN_WIDTH, area.getWidth() * 0.92));
+        double height = Math.max(minHeight, Math.min(DESIGN_HEIGHT, area.getHeight() * 0.92));
+
+        stage.setWidth(width);
+        stage.setHeight(height);
+        stage.setX(area.getMinX() + (area.getWidth() - width) / 2);
+        stage.setY(area.getMinY() + (area.getHeight() - height) / 2);
+
+        LOG.info(String.format("Web UI window: %.0fx%.0f (min %.0fx%.0f, screen %.0fx%.0f)",
+                width, height, minWidth, minHeight, area.getWidth(), area.getHeight()));
+    }
+
     private void pushLater() {
         Platform.runLater(bridge::push);
     }
@@ -140,7 +180,7 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
             String scroll = System.getProperty("hmcl.web.scroll");
             if (scroll != null && !scroll.isBlank()) {
                 webView.getEngine().executeScript(
-                        "var c = document.querySelector('.content'); if (c) c.scrollTop = " + scroll + ";");
+                        "var c = document.getElementById('page-body'); if (c) c.scrollTop = " + scroll + ";");
             }
 
             String page = System.getProperty("hmcl.web.page");
@@ -148,12 +188,19 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
                 // 账号页没有侧栏入口，走左下角账号卡
                 String selector = "accounts".equals(page)
                         ? "#account-chip"
-                        : ".nav-item[data-page=\"" + page + "\"]";
+                        : ".rail-nav .rail-item[data-page=\"" + page + "\"]";
                 Object switched = webView.getEngine().executeScript(
                         "(function(){var n=document.querySelector('" + selector + "');"
                                 + "if(!n) return 'no-nav'; n.click();"
-                                + "return document.querySelector('.page.active').id;})()");
+                                + "return document.querySelector('.page.on').id;})()");
                 System.out.println("WEB PAGE -> " + switched);
+            }
+
+            // 验收用：-Dhmcl.web.rail=closed 强制收起侧栏，检查收起态布局
+            String rail = System.getProperty("hmcl.web.rail");
+            if (rail != null && !rail.isBlank()) {
+                webView.getEngine().executeScript("document.body.classList.toggle('rail-open', "
+                        + ("open".equals(rail)) + ")");
             }
 
             // 验收用：-Dhmcl.web.tab=cape 在外观页里再点一下对应标签

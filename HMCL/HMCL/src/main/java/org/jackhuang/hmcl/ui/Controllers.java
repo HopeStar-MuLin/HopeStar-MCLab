@@ -299,6 +299,8 @@ public final class Controllers {
             LOG.info("Web UI enabled, switching main page to WebView");
             // 顶栏交给页面自己画，窗口按钮与拖拽由 WebBridge 接管
             decorator.setTitleBarVisible(false);
+            // 窗口尺寸按屏幕可用区算：低分屏（1366×768）上默认 1280×860 会顶到任务栏底下
+            org.jackhuang.hmcl.ui.web.WebUIPage.fitWindowToScreen(stage);
             navigate(new org.jackhuang.hmcl.ui.web.WebUIPage());
         }
 
