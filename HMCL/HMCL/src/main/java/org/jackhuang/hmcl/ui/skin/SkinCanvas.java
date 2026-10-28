@@ -91,6 +91,18 @@ public class SkinCanvas extends Group {
             capeCube
     );
 
+    /// 背饰渲染模式：披风（平板）或鞘翅（两片翅膀）
+    public enum CapeMode {
+        CAPE, ELYTRA
+    }
+
+    protected CapeMode capeMode = CapeMode.CAPE;
+    protected boolean hasCape;
+
+    /// 鞘翅模型，贴图与披风同源（64×32），由调用方决定传披风图还是独立鞘翅图
+    public final ElytraModel elytra = new ElytraModel();
+    public final Group elytraGroup = new Group(elytra);
+
     protected PerspectiveCamera camera = new PerspectiveCamera(true);
 
     protected Rotate xRotate = new Rotate(0, Rotate.X_AXIS);
@@ -114,6 +126,12 @@ public class SkinCanvas extends Group {
     }
 
     public void updateSkin(Image skin, boolean isSlim, final @Nullable Image cape) {
+        updateSkin(skin, isSlim, cape, cape);
+    }
+
+    /// 带独立鞘翅贴图的版本。玩家披风文件里如果带了鞘翅图（CSL / 皮肤站），传进来单独渲染；
+    /// 否则调用方传 `null` 或直接复用披风图。
+    public void updateSkin(Image skin, boolean isSlim, final @Nullable Image cape, final @Nullable Image elytraTexture) {
         if (SkinHelper.isNoRequest(skin) && SkinHelper.isSkin(skin)) {
             this.srcSkin = skin;
             this.skin = SkinHelper.x32Tox64(skin);
@@ -124,6 +142,11 @@ public class SkinCanvas extends Group {
                 this.skin = SkinHelper.enlarge(this.skin, multiple, multiple);
             updateSkinModel(isSlim, cape != null);
             bindMaterial(root);
+            // bindMaterial 会把皮肤的材质刷到所有 Shape3D 上，这里再把鞘翅改回背饰贴图
+            Image wingTexture = elytraTexture != null ? elytraTexture : cape;
+            if (wingTexture != null) {
+                elytra.setTexture(wingTexture);
+            }
         }
     }
 
@@ -145,7 +168,28 @@ public class SkinCanvas extends Group {
         larm.getZRotate().setPivotX(-larmInside.getWidth() / 2);
         rarm.getZRotate().setPivotX(+rarmInside.getWidth() / 2);
 
-        capeGroup.setVisible(hasCape);
+        this.hasCape = hasCape;
+        applyCapeModeVisibility();
+    }
+
+    /// 切换背饰形态：披风 / 鞘翅
+    /// 设置水平观察角度（度）。默认 180 是正面，往 180+ 方向转可以看到背后的披风/鞘翅。
+    public void setYaw(double degree) {
+        yRotate.setAngle(degree);
+    }
+
+    public void setCapeMode(@Nullable CapeMode mode) {
+        this.capeMode = mode == null ? CapeMode.CAPE : mode;
+        applyCapeModeVisibility();
+    }
+
+    public CapeMode getCapeMode() {
+        return capeMode;
+    }
+
+    private void applyCapeModeVisibility() {
+        capeGroup.setVisible(hasCape && capeMode == CapeMode.CAPE);
+        elytra.setVisible(hasCape && capeMode == CapeMode.ELYTRA);
     }
 
     public SkinCanvas(Image skin, double preW, double preH, boolean msaa) {
@@ -191,6 +235,10 @@ public class SkinCanvas extends Group {
 
         capeGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(10, Rotate.X_AXIS));
 
+        elytraGroup.setTranslateY(+(capeCube.getHeight() - bodyOuter.getHeight()) / 2);
+        elytraGroup.setTranslateZ(-(bodyInside.getDepth() + bodyOuter.getDepth()) / 2);
+        elytraGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(10, Rotate.X_AXIS));
+
         root.getTransforms().addAll(xRotate);
 
         root.getChildren().addAll(
@@ -200,7 +248,8 @@ public class SkinCanvas extends Group {
                 rarm,
                 lleg,
                 rleg,
-                capeGroup
+                capeGroup,
+                elytraGroup
         );
         updateSkin(skin, false, null);
 

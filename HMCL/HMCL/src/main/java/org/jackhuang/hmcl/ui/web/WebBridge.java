@@ -36,6 +36,7 @@ import org.jackhuang.hmcl.setting.Accounts;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.setting.GameInstanceIconType;
 import org.jackhuang.hmcl.setting.GameSettings;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -43,12 +44,14 @@ import org.jackhuang.hmcl.ui.account.AddAuthlibInjectorServerPane;
 import org.jackhuang.hmcl.ui.account.CreateAccountPane;
 import org.jackhuang.hmcl.ui.account.MicrosoftAccountLoginPane;
 import org.jackhuang.hmcl.ui.instances.Instances;
+import org.jackhuang.hmcl.ui.skin.SkinCanvas;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jetbrains.annotations.Nullable;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -82,6 +85,8 @@ public final class WebBridge {
     private static final String CONTENT_BASE = "https://launchercontent.mojang.com";
 
     private final WebEngine engine;
+    private final WebUIPage page;
+    private final AppearanceStore appearance = AppearanceStore.getInstance();
 
     /// 实例目录占用缓存：id -> bytes
     private final Map<String, Long> instanceSizes = new ConcurrentHashMap<>();
@@ -90,8 +95,9 @@ public final class WebBridge {
     private volatile String newsJson;
     private volatile boolean newsLoading;
 
-    WebBridge(WebEngine engine) {
+    WebBridge(WebEngine engine, WebUIPage page) {
         this.engine = engine;
+        this.page = page;
     }
 
     // ==================== 状态 ====================
@@ -524,6 +530,375 @@ public final class WebBridge {
 
     private static String optString(JsonObject object, String key) {
         return object.has(key) && !object.get(key).isJsonNull() ? object.get(key).getAsString() : "";
+    }
+
+    // ==================== 外观（皮肤 / 披风 / 鞘翅） ====================
+
+    /// 账号当前纹理缓存，用于「还没选本地文件时」的兜底预览
+    private volatile Image accountSkinCache;
+    private volatile boolean accountSkinSlim;
+    private volatile Image accountCapeCache;
+    private final Map<String, Image> serverCapeImages = new ConcurrentHashMap<>();
+    private String pendingServerCape;
+
+    public String appearance() {
+        Account account = Accounts.getSelectedAccount();
+        String accountId = account != null ? account.getAccountID().toString() : "";
+        String kind = accountKind(account);
+
+        JsonObject root = new JsonObject();
+        root.addProperty("kind", kind);
+        root.addProperty("accountName", account != null ? displayName(account) : "");
+        root.addProperty("readOnly", "authlib".equals(kind));
+        root.add("skins", assetsJson(AppearanceStore.Kind.SKIN));
+        root.add("capes", assetsJson(AppearanceStore.Kind.CAPE));
+
+        AppearanceStore.State state = appearance.stateOf(accountId);
+        JsonObject stateJson = new JsonObject();
+        stateJson.addProperty("skin", state.getSkin());
+        stateJson.addProperty("cape", state.getCape());
+        stateJson.addProperty("model", state.getModel());
+        stateJson.addProperty("capeMode", state.getCapeMode());
+        root.add("state", stateJson);
+
+        root.addProperty("accountSkin", accountSkinCache != null ? imageToDataUrl(accountSkinCache, 96) : null);
+        root.addProperty("accountCape", accountCapeCache != null ? imageToDataUrl(accountCapeCache, 96) : null);
+        return JsonUtils.GSON.toJson(root);
+    }
+
+    private JsonArray assetsJson(AppearanceStore.Kind kind) {
+        JsonArray array = new JsonArray();
+        for (AppearanceStore.Asset asset : appearance.list(kind)) {
+            JsonObject item = new JsonObject();
+            item.addProperty("id", asset.getId());
+            item.addProperty("name", asset.getName());
+            item.addProperty("model", asset.getModel());
+            item.addProperty("hasElytra", asset.isHasElytra());
+            try {
+                item.addProperty("preview", imageToDataUrl(appearance.image(kind, asset), 64));
+            } catch (Exception e) {
+                item.addProperty("preview", (String) null);
+            }
+            if (kind == AppearanceStore.Kind.CAPE && asset.isHasElytra()) {
+                Image elytra = appearance.elytraImage(asset);
+                item.addProperty("elytraPreview", elytra != null ? imageToDataUrl(elytra, 64) : (String) null);
+            }
+            array.add(item);
+        }
+        return array;
+    }
+
+    private static String accountKind(Account account) {
+        if (account == null) {
+            return "none";
+        }
+        if (account instanceof org.jackhuang.hmcl.auth.offline.OfflineAccount) {
+            return "offline";
+        }
+        if (account instanceof org.jackhuang.hmcl.auth.microsoft.MicrosoftAccount) {
+            return "microsoft";
+        }
+        if (account instanceof AuthlibInjectorAccount) {
+            return "authlib";
+        }
+        return "other";
+    }
+
+    /// 前端上报预览区矩形（CSS 像素），把 JavaFX 3D 画布摆上去
+    public void setPreviewRect(double x, double y, double width, double height) {
+        Platform.runLater(() -> {
+            page.placePreview(x, y, width, height);
+            refreshPreview();
+        });
+    }
+
+    public void hidePreview() {
+        Platform.runLater(page::hidePreview);
+    }
+
+    public void importSkin() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("导入皮肤");
+        chooser.getExtensionFilters().add(FXUtils.getImageExtensionFilter());
+        Path file = Controllers.showOpenDialog(chooser);
+        if (file == null) {
+            return;
+        }
+        try {
+            AppearanceStore.Asset asset = appearance.importSkin(file);
+            AppearanceStore.State state = stateOfSelectedAccount();
+            state.skin = asset.getId();
+            state.model = asset.getModel();
+            appearance.saveState(selectedAccountId(), state);
+            pushAppearance();
+            refreshPreview();
+        } catch (Exception e) {
+            LOG.warning("Failed to import skin", e);
+            Controllers.showToast("导入皮肤失败：" + e.getMessage());
+        }
+    }
+
+    /// 选披风文件；多选第二张作为独立鞘翅贴图
+    public void importCape() {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("导入披风（可同时选中鞘翅贴图）");
+        chooser.getExtensionFilters().add(FXUtils.getImageExtensionFilter());
+        List<File> files = chooser.showOpenMultipleDialog(Controllers.getStage());
+        if (files == null || files.isEmpty()) {
+            return;
+        }
+        try {
+            Path capeFile = files.get(0).toPath();
+            Path elytraFile = files.size() > 1 ? files.get(1).toPath() : null;
+            AppearanceStore.Asset asset = appearance.importCape(capeFile, elytraFile);
+            AppearanceStore.State state = stateOfSelectedAccount();
+            state.cape = asset.getId();
+            appearance.saveState(selectedAccountId(), state);
+            pushAppearance();
+            refreshPreview();
+        } catch (Exception e) {
+            LOG.warning("Failed to import cape", e);
+            Controllers.showToast("导入披风失败：" + e.getMessage());
+        }
+    }
+
+    public void selectSkin(String id) {
+        AppearanceStore.State state = stateOfSelectedAccount();
+        state.skin = id;
+        AppearanceStore.Asset asset = appearance.find(AppearanceStore.Kind.SKIN, id);
+        if (asset != null && asset.getModel() != null) {
+            state.model = asset.getModel();
+        }
+        appearance.saveState(selectedAccountId(), state);
+        pushAppearance();
+        refreshPreview();
+    }
+
+    public void selectCape(String id) {
+        AppearanceStore.State state = stateOfSelectedAccount();
+        state.cape = id;
+        appearance.saveState(selectedAccountId(), state);
+        pushAppearance();
+        refreshPreview();
+    }
+
+    public void removeSkin(String id) {
+        appearance.remove(AppearanceStore.Kind.SKIN, id);
+        AppearanceStore.State state = stateOfSelectedAccount();
+        if (id != null && id.equals(state.skin)) {
+            state.skin = null;
+            appearance.saveState(selectedAccountId(), state);
+        }
+        pushAppearance();
+        refreshPreview();
+    }
+
+    public void removeCape(String id) {
+        appearance.remove(AppearanceStore.Kind.CAPE, id);
+        AppearanceStore.State state = stateOfSelectedAccount();
+        if (id != null && id.equals(state.cape)) {
+            state.cape = null;
+            appearance.saveState(selectedAccountId(), state);
+        }
+        pushAppearance();
+        refreshPreview();
+    }
+
+    public void renameSkin(String id, String name) {
+        appearance.rename(AppearanceStore.Kind.SKIN, id, name);
+        pushAppearance();
+    }
+
+    public void renameCape(String id, String name) {
+        appearance.rename(AppearanceStore.Kind.CAPE, id, name);
+        pushAppearance();
+    }
+
+    public void setSkinModel(String model) {
+        AppearanceStore.State state = stateOfSelectedAccount();
+        state.model = "slim".equals(model) ? "slim" : "default";
+        appearance.saveState(selectedAccountId(), state);
+        pushAppearance();
+        refreshPreview();
+    }
+
+    public void setCapeMode(String mode) {
+        AppearanceStore.State state = stateOfSelectedAccount();
+        state.capeMode = "elytra".equals(mode) ? "elytra" : "cape";
+        appearance.saveState(selectedAccountId(), state);
+        pushAppearance();
+        refreshPreview();
+    }
+
+    /// 拉取正版账号拥有的披风列表（异步推给前端）
+    public void requestServerCapes() {
+        if (!(Accounts.getSelectedAccount() instanceof org.jackhuang.hmcl.auth.microsoft.MicrosoftAccount microsoftAccount)) {
+            return;
+        }
+        Task.runAsync(() -> {
+            JsonArray array = new JsonArray();
+            try {
+                for (var cape : microsoftAccount.getCapes()) {
+                    JsonObject item = new JsonObject();
+                    item.addProperty("id", cape.id);
+                    item.addProperty("name", cape.alias != null ? cape.alias : cape.id);
+                    item.addProperty("url", cape.url);
+                    item.addProperty("active", cape.isActive());
+                    array.add(item);
+                    if (cape.url != null) {
+                        TexturesLoader.loadRemoteTexture(cape.url)
+                                .thenAccept(image -> {
+                                    if (image != null) {
+                                        serverCapeImages.put(cape.id, image);
+                                        Platform.runLater(this::refreshPreview);
+                                    }
+                                });
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warning("Failed to fetch server capes", e);
+            }
+            String json = JsonUtils.GSON.toJson(array);
+            Platform.runLater(() -> execute("window.__hmcl && window.__hmcl.onServerCapes(" + JsonUtils.GSON.toJson(json) + ")"));
+        }).start();
+    }
+
+    /// 正版账号：选中服务器上的某件披风（只改预览，应用时才提交）
+    public void selectServerCape(String capeId) {
+        pendingServerCape = capeId;
+        refreshPreview();
+    }
+
+    private String selectedAccountId() {
+        Account account = Accounts.getSelectedAccount();
+        return account != null ? account.getAccountID().toString() : "none";
+    }
+
+    private AppearanceStore.State stateOfSelectedAccount() {
+        return appearance.stateOf(selectedAccountId());
+    }
+
+    /// 依据「本地选择 → 账号当前纹理 → 默认皮肤」刷新 3D 预览
+    void refreshPreview() {
+        AppearanceStore.State state = stateOfSelectedAccount();
+
+        Image skin = null;
+        boolean slim = false;
+
+        AppearanceStore.Asset skinAsset = appearance.find(AppearanceStore.Kind.SKIN, state.getSkin());
+        if (skinAsset != null) {
+            try {
+                skin = appearance.image(AppearanceStore.Kind.SKIN, skinAsset);
+                slim = "slim".equals(state.getModel()) || "slim".equals(skinAsset.getModel());
+            } catch (IOException e) {
+                LOG.warning("Failed to load selected skin", e);
+            }
+        }
+        if (skin == null) {
+            skin = accountSkinCache;
+            slim = accountSkinSlim;
+        }
+        if (skin == null) {
+            skin = TexturesLoader.getDefaultSkinImage();
+        }
+
+        Image cape = null;
+        Image elytra = null;
+
+        if (pendingServerCape != null) {
+            cape = serverCapeImages.get(pendingServerCape);
+        }
+        if (cape == null) {
+            AppearanceStore.Asset capeAsset = appearance.find(AppearanceStore.Kind.CAPE, state.getCape());
+            if (capeAsset != null) {
+                try {
+                    cape = appearance.image(AppearanceStore.Kind.CAPE, capeAsset);
+                    elytra = appearance.elytraImage(capeAsset);
+                } catch (IOException e) {
+                    LOG.warning("Failed to load selected cape", e);
+                }
+            }
+        }
+        if (cape == null) {
+            cape = accountCapeCache;
+        }
+
+        SkinCanvas canvas = page.getPreviewCanvas();
+        canvas.updateSkin(skin, slim, cape, elytra);
+        boolean elytraMode = "elytra".equals(state.getCapeMode());
+        canvas.setCapeMode(elytraMode ? SkinCanvas.CapeMode.ELYTRA : SkinCanvas.CapeMode.CAPE);
+        // 有背部挂件时侧一点角度，否则正面完全看不到披风/翅膀
+        canvas.setYaw(cape != null ? (elytraMode ? 335 : 350) : 180);
+    }
+
+    /// 账号纹理到手后刷新缓存与预览
+    void onAccountTextures(TexturesLoader.LoadedTexture skin, TexturesLoader.LoadedTexture cape) {
+        if (skin != null) {
+            accountSkinCache = skin.image();
+            accountSkinSlim = "slim".equals(skin.metadata().get("model"));
+        }
+        if (cape != null) {
+            accountCapeCache = cape.image();
+        }
+        refreshPreview();
+    }
+
+    /// 应用：离线写本地皮肤路径；正版上传皮肤 + 提交披风；外置认证不支持更换
+    public void applyAppearance() {
+        Account account = Accounts.getSelectedAccount();
+        if (account == null) {
+            return;
+        }
+
+        AppearanceStore.State state = stateOfSelectedAccount();
+
+        if (account instanceof org.jackhuang.hmcl.auth.offline.OfflineAccount offlineAccount) {
+            AppearanceStore.Asset skinAsset = appearance.find(AppearanceStore.Kind.SKIN, state.getSkin());
+            AppearanceStore.Asset capeAsset = appearance.find(AppearanceStore.Kind.CAPE, state.getCape());
+            offlineAccount.setSkin(new org.jackhuang.hmcl.auth.offline.Skin(
+                    org.jackhuang.hmcl.auth.offline.Skin.Type.LOCAL_FILE,
+                    null,
+                    "slim".equals(state.getModel()) ? org.jackhuang.hmcl.auth.yggdrasil.TextureModel.SLIM
+                            : org.jackhuang.hmcl.auth.yggdrasil.TextureModel.WIDE,
+                    skinAsset != null ? appearance.fileOf(AppearanceStore.Kind.SKIN, skinAsset.getId()).toString() : null,
+                    capeAsset != null ? appearance.fileOf(AppearanceStore.Kind.CAPE, capeAsset.getId()).toString() : null));
+            Controllers.showToast("已保存到离线账号");
+            pushAppearance();
+            return;
+        }
+
+        if (account instanceof org.jackhuang.hmcl.auth.microsoft.MicrosoftAccount microsoftAccount) {
+            Task.runAsync(() -> {
+                try {
+                    AppearanceStore.Asset skinAsset = appearance.find(AppearanceStore.Kind.SKIN, state.getSkin());
+                    if (skinAsset != null) {
+                        microsoftAccount.uploadSkin("slim".equals(state.getModel()),
+                                appearance.fileOf(AppearanceStore.Kind.SKIN, skinAsset.getId()));
+                    }
+                    if (pendingServerCape != null) {
+                        microsoftAccount.setActiveCape(pendingServerCape);
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }).whenComplete(Schedulers.javafx(), exception -> {
+                if (exception != null) {
+                    LOG.warning("Failed to apply appearance", exception);
+                    Controllers.showToast("应用失败：" + Accounts.localizeErrorMessage(exception));
+                } else {
+                    Controllers.showToast("已应用到正版账号");
+                    pendingServerCape = null;
+                    pushAppearance();
+                }
+            }).start();
+            return;
+        }
+
+        Controllers.showToast("外置认证账号请前往对应平台修改外观");
+    }
+
+    private void pushAppearance() {
+        execute("window.__hmcl && window.__hmcl.onAppearance(" + JsonUtils.GSON.toJson(appearance()) + ")");
     }
 
     // ==================== 窗口（自绘标题栏） ====================

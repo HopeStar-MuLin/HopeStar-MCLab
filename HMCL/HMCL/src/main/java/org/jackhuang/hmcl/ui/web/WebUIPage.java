@@ -25,7 +25,10 @@ import javafx.collections.ListChangeListener;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
 import javafx.scene.image.PixelReader;
+import javafx.scene.image.Image;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.StackPane;
+import org.jackhuang.hmcl.ui.skin.SkinCanvas;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.util.Duration;
@@ -63,6 +66,11 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
     private final WebView webView = new WebView();
     private final WebBridge bridge;
 
+    /// 外观页的 3D 预览：以覆盖层形式盖在 WebView 上方，位置由前端上报
+    private final SkinCanvas preview = new SkinCanvas(
+            org.jackhuang.hmcl.game.TexturesLoader.getDefaultSkinImage(), 320, 420, true);
+    private final Pane previewLayer = new Pane();
+
     public WebUIPage() {
         getStyleClass().add("web-ui-page");
 
@@ -71,9 +79,16 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         webView.setContextMenuEnabled(false);
         webView.setMinSize(0, 0);
 
-        bridge = new WebBridge(engine);
+        bridge = new WebBridge(engine, this);
 
-        getChildren().setAll(webView);
+        preview.setManaged(false);
+        preview.setVisible(false);
+        preview.enableRotation(0.6);
+        previewLayer.getChildren().add(preview);
+        previewLayer.setPickOnBounds(false);
+        previewLayer.setMouseTransparent(false);
+
+        getChildren().setAll(webView, previewLayer);
 
         engine.getLoadWorker().stateProperty().addListener((observable, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
@@ -129,7 +144,7 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
             PauseTransition delay = new PauseTransition(Duration.millis(4500));
             delay.setOnFinished(event -> {
                 try {
-                    savePng(webView.snapshot(null, null), Path.of(shot));
+                    savePng(WebUIPage.this.snapshot(null, null), Path.of(shot));
                     System.out.println("WEB SHOT OK " + shot);
                 } catch (Exception e) {
                     System.out.println("WEB SHOT FAILED " + e);
@@ -156,6 +171,24 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         }
         ImageIO.write(buffered, "png", path.toFile());
         LOG.info("Web UI screenshot saved to " + FileUtils.getAbsolutePath(path));
+    }
+
+    /// 外观页激活时把 3D 预览摆到前端上报的矩形上；矩形为 CSS 像素，与 JavaFX 逻辑像素一致
+    void placePreview(double x, double y, double width, double height) {
+        preview.relocate(x, y);
+        preview.setVisible(width > 0 && height > 0);
+        previewLayer.setVisible(preview.isVisible());
+        preview.setScaleX(Math.min(1.0, width / 320.0));
+        preview.setScaleY(Math.min(1.0, width / 320.0));
+    }
+
+    void hidePreview() {
+        preview.setVisible(false);
+        previewLayer.setVisible(false);
+    }
+
+    SkinCanvas getPreviewCanvas() {
+        return preview;
     }
 
     @Override

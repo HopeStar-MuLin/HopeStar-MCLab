@@ -389,7 +389,7 @@
 
   // ---------------- 交互 ----------------
 
-  var titles = { home: '主页', instances: '实例', download: '下载', settings: '设置', accounts: '账号' };
+  var titles = { home: '主页', instances: '实例', download: '下载', settings: '设置', accounts: '账号', appearance: '外观' };
 
   function go(page) {
     var items = document.querySelectorAll('.nav-item');
@@ -402,6 +402,12 @@
     }
     var tb = document.getElementById('tb-title');
     if (tb) { tb.textContent = titles[page] || ''; }
+
+    if (page === 'appearance') {
+      showAppearance();
+    } else {
+      if (call('hidePreview') === null) { /* 老版本桥没有这个方法时忽略 */ }
+    }
   }
 
   function initUi() {
@@ -460,6 +466,11 @@
       document.getElementById('icon-step-pick').hidden = false;
     });
     initCropEvents();
+    initAppearance();
+
+    document.getElementById('btn-account-appearance').addEventListener('click', function () {
+      go('appearance');
+    });
   }
 
   function initWindowDrag() {
@@ -495,6 +506,255 @@
     });
   }
 
+
+  // ---------------- 外观页 ----------------
+
+  var apData = null;
+  var apTab = 'skin';
+  var serverCapes = null;
+  var ctxMenu = null;
+
+  function closeCtx() {
+    if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; }
+  }
+
+  function renderAppearance(data) {
+    apData = data || apData;
+    if (!apData) { return; }
+
+    var kind = apData.kind || 'none';
+    var readOnly = !!apData.readOnly;
+
+    // 模型 / 背饰开关
+    var model = (apData.state && apData.state.model) === 'slim' ? 'slim' : 'default';
+    var capeMode = (apData.state && apData.state.capeMode) === 'elytra' ? 'elytra' : 'cape';
+    var segs = document.querySelectorAll('#model-seg button');
+    for (var i = 0; i < segs.length; i++) {
+      segs[i].classList.toggle('active', segs[i].getAttribute('data-model') === model);
+    }
+    var csegs = document.querySelectorAll('#cape-seg button');
+    for (var j = 0; j < csegs.length; j++) {
+      csegs[j].classList.toggle('active', csegs[j].getAttribute('data-cape-mode') === capeMode);
+    }
+
+    document.getElementById('ap-apply').disabled = readOnly;
+    document.getElementById('ap-import').disabled = readOnly;
+
+    var hint = document.getElementById('ap-hint');
+    if (kind === 'none') {
+      hint.textContent = '先在账号页登录一个账号。';
+    } else if (kind === 'authlib') {
+      hint.textContent = '外置认证账号的外观由平台管理，这里只做预览，请前往对应平台修改。';
+    } else if (kind === 'microsoft') {
+      hint.textContent = '皮肤保存在本地，点「应用到账号」才会上传；披风只能从已拥有的列表里选择。';
+    } else {
+      hint.textContent = '皮肤与披风保存在启动器目录，重装或迁移不会丢。';
+    }
+
+    renderAssetGrid();
+  }
+
+  function assetCard(opts) {
+    var card = el('div', 'asset-card' + (opts.current ? ' current' : ''));
+    var img = document.createElement('img');
+    if (opts.preview) { img.src = opts.preview; }
+    else { img.style.background = 'linear-gradient(135deg,#5b7cfa,#8f6bff)'; }
+    card.appendChild(img);
+    card.appendChild(el('div', 'asset-name', opts.name || '未命名'));
+
+    if (opts.badges && opts.badges.length) {
+      var badges = el('div', 'asset-badges');
+      opts.badges.forEach(function (b) { badges.appendChild(el('span', 'tag', b)); });
+      card.appendChild(badges);
+    }
+
+    card.addEventListener('click', function (e) {
+      e.stopPropagation();
+      closeCtx();
+      if (opts.onSelect) { opts.onSelect(); }
+    });
+
+    if (opts.onContext) {
+      card.addEventListener('contextmenu', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        showCtx(e.clientX, e.clientY, opts.onContext);
+      });
+    }
+    return card;
+  }
+
+  function showCtx(x, y, actions) {
+    closeCtx();
+    var menu = el('div', 'ctx');
+    actions.forEach(function (action) {
+      var btn = el('button', action.danger ? 'danger' : '', action.label);
+      btn.addEventListener('click', function () {
+        closeCtx();
+        action.run();
+      });
+      menu.appendChild(btn);
+    });
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    document.body.appendChild(menu);
+    ctxMenu = menu;
+  }
+
+  function renderAssetGrid() {
+    var grid = document.getElementById('asset-grid');
+    grid.innerHTML = '';
+    if (!apData) { return; }
+
+    var kind = apData.kind;
+    var readOnly = !!apData.readOnly;
+    var state = apData.state || {};
+
+    if (apTab === 'skin') {
+      var skins = apData.skins || [];
+      if (kind === 'authlib' || kind === 'microsoft') {
+        grid.appendChild(assetCard({
+          name: '账号当前皮肤',
+          preview: apData.accountSkin,
+          badges: ['服务器'],
+          current: !state.skin,
+          onSelect: function () { call('selectSkin', ''); }
+        }));
+      }
+      skins.forEach(function (s) {
+        grid.appendChild(assetCard({
+          name: s.name,
+          preview: s.preview,
+          badges: [s.model === 'slim' ? '纤体' : '宽体'],
+          current: state.skin === s.id,
+          onSelect: function () { call('selectSkin', s.id); },
+          onContext: readOnly ? null : [
+            { label: '重命名', run: function () {
+                var name = prompt('新的名称', s.name);
+                if (name) { call('renameSkin', s.id, name); }
+              } },
+            { label: '删除', danger: true, run: function () { call('removeSkin', s.id); } }
+          ]
+        }));
+      });
+      if (!skins.length && kind === 'offline') {
+        grid.appendChild(el('div', 'empty', '还没有导入皮肤，点右上角「导入文件」。'));
+      }
+      document.getElementById('ap-tip').textContent =
+        '皮肤文件要求 64×32 或 64×64（也支持 128 等倍数）；模型会自动识别，可手动切换。';
+    } else {
+      if (kind === 'microsoft') {
+        if (!serverCapes) {
+          grid.appendChild(el('div', 'empty', '正在从 Mojang 拉取披风列表…'));
+          call('requestServerCapes');
+        } else if (!serverCapes.length) {
+          grid.appendChild(el('div', 'empty', '这个账号没有可用披风。'));
+        } else {
+          serverCapes.forEach(function (c) {
+            grid.appendChild(assetCard({
+              name: c.name,
+              preview: null,
+              badges: c.active ? ['已装备'] : [],
+              current: c.active,
+              onSelect: function () { call('selectServerCape', c.id); }
+            }));
+          });
+        }
+        document.getElementById('ap-tip').textContent =
+          '正版披风由服务器下发，只能选择已拥有的；点「应用到账号」才会提交更换。';
+      } else {
+        var capes = apData.capes || [];
+        if (kind === 'authlib') {
+          grid.appendChild(assetCard({
+            name: '账号当前披风',
+            preview: apData.accountCape,
+            badges: ['服务器'],
+            current: true
+          }));
+        }
+        capes.forEach(function (c) {
+          grid.appendChild(assetCard({
+            name: c.name,
+            preview: c.preview,
+            badges: c.hasElytra ? ['含鞘翅'] : [],
+            current: state.cape === c.id,
+            onSelect: function () { call('selectCape', c.id); },
+            onContext: readOnly ? null : [
+              { label: '重命名', run: function () {
+                  var name = prompt('新的名称', c.name);
+                  if (name) { call('renameCape', c.id, name); }
+                } },
+              { label: '删除', danger: true, run: function () { call('removeCape', c.id); } }
+            ]
+          }));
+        });
+        if (!capes.length && kind === 'offline') {
+          grid.appendChild(el('div', 'empty', '还没有导入披风。导入时可以一次选两张图：第一张披风，第二张鞘翅。'));
+        }
+        document.getElementById('ap-tip').textContent =
+          '披风可附带独立鞘翅贴图；没有的话鞘翅会直接用披风贴图渲染。';
+      }
+    }
+  }
+
+  function sendPreviewRect() {
+    var slot = document.getElementById('preview-slot');
+    if (!slot) { return; }
+    var r = slot.getBoundingClientRect();
+    call('setPreviewRect', r.left, r.top, r.width, r.height);
+  }
+
+  function showAppearance() {
+    var raw = call('appearance');
+    if (raw) {
+      try { renderAppearance(JSON.parse(raw)); } catch (e) { console.error(e); }
+    }
+    sendPreviewRect();
+  }
+
+  function initAppearance() {
+    var tabs = document.querySelectorAll('.tab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].addEventListener('click', function () {
+        var all = document.querySelectorAll('.tab');
+        for (var j = 0; j < all.length; j++) { all[j].classList.remove('active'); }
+        this.classList.add('active');
+        apTab = this.getAttribute('data-tab');
+        if (apTab === 'cape' && apData && apData.kind === 'microsoft') { call('requestServerCapes'); }
+        renderAssetGrid();
+      });
+    }
+
+    var modelBtns = document.querySelectorAll('#model-seg button');
+    for (var m = 0; m < modelBtns.length; m++) {
+      modelBtns[m].addEventListener('click', function () {
+        call('setSkinModel', this.getAttribute('data-model'));
+      });
+    }
+
+    var capeBtns = document.querySelectorAll('#cape-seg button');
+    for (var c = 0; c < capeBtns.length; c++) {
+      capeBtns[c].addEventListener('click', function () {
+        call('setCapeMode', this.getAttribute('data-cape-mode'));
+      });
+    }
+
+    document.getElementById('ap-import').addEventListener('click', function () {
+      if (apTab === 'skin') { call('importSkin'); } else { call('importCape'); }
+    });
+
+    document.getElementById('ap-apply').addEventListener('click', function () {
+      call('applyAppearance');
+    });
+
+    document.addEventListener('click', closeCtx);
+    window.addEventListener('resize', function () {
+      if (document.getElementById('page-appearance').classList.contains('active')) {
+        sendPreviewRect();
+      }
+    });
+  }
+
   // ---------------- Java 回调入口 ----------------
 
   window.__hmcl = {
@@ -509,6 +769,13 @@
     },
     onToast: function (text) {
       console.log('[toast] ' + text);
+    },
+    onAppearance: function (json) {
+      try { renderAppearance(JSON.parse(json)); } catch (e) { console.error(e); }
+    },
+    onServerCapes: function (json) {
+      try { serverCapes = JSON.parse(json); } catch (e) { serverCapes = []; }
+      if (apTab === 'cape') { renderAssetGrid(); }
     }
   };
 
