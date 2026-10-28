@@ -242,6 +242,16 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
                 System.out.println("WEB PAGE -> " + switched);
             }
 
+            // 验收用：-Dhmcl.web.theme=dark 强制深色，检查暗色下的对比度
+            String theme = System.getProperty("hmcl.web.theme");
+            if (theme != null && !theme.isBlank()) {
+                // 同时写进 localStorage：否则随后推来的 state.theme 会把强制主题覆盖回去
+                String t = org.jackhuang.hmcl.util.gson.JsonUtils.GSON.toJson(theme);
+                webView.getEngine().executeScript(
+                        "(function(){try{localStorage.setItem('mclab.theme'," + t + ")}catch(e){}"
+                                + "document.body.setAttribute('data-theme'," + t + ");})()");
+            }
+
             // 验收用：-Dhmcl.web.rail=closed 强制收起侧栏，检查收起态布局
             String rail = System.getProperty("hmcl.web.rail");
             if (rail != null && !rail.isBlank()) {
@@ -300,7 +310,12 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
             // 再回来预览就一直空白）。
             previewLayer.setVisible(true);
             preview.setVisible(true);
-            Image image = preview.snapshot(new javafx.scene.SnapshotParameters(), null);
+
+            // 必须显式指定透明填充：SnapshotParameters 默认是白底，
+            // 暗色主题下预览就成了一块刺眼的白方块（截图里能看到）。
+            var params = new javafx.scene.SnapshotParameters();
+            params.setFill(javafx.scene.paint.Color.TRANSPARENT);
+            Image image = preview.snapshot(params, null);
             return WebBridge.imageToDataUrl(image, (int) PREVIEW_WIDTH);
         } catch (Exception e) {
             LOG.warning("Failed to snapshot skin preview", e);

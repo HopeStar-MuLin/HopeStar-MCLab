@@ -93,9 +93,58 @@ fn fit_to_screen(app, design_w, design_h) -> (f64, f64) {
 截图：`docs/shell-home-1366x768.png`、`shell-appearance-1024x680.png`、
 `shell-appearance-880x620.png`、`shell-rail-closed.png`、`shell-accounts.png`。
 
-## 六、下一步（动画）
+## 六、动画基础（详见第七节）
 
-当前的过渡只有两处：`.page.on` 的 `pageIn`（8px 上浮 + 淡入）、
-卡片 hover 的上浮与阴影。曲线统一 `cubic-bezier(.22,1,.36,1)`，
 只动 `transform` / `opacity`，不动 `width/height/top/left`
-（后者每帧触发布局重排，是 WebView 里掉帧的主因）。
+（后者每帧触发布局重排，是掉帧主因）。帧率实测见 `docs/perf-baseline.md`。
+
+---
+
+## 七、动效与反馈（本轮）
+
+### 参数
+
+```css
+--ease-out:  cubic-bezier(.22, 1, .36, 1);   /* 进场：快起慢收 */
+--ease-in:   cubic-bezier(.4, 0, 1, 1);      /* 离场：比进场快 */
+--dur-enter: .24s;  --dur-leave: .14s;
+```
+
+- 页面切换：`pageIn` 8px 上浮 + 淡入，240ms
+- 卡片/列表批量进场：`riseIn` 10px 上浮，按 `--i` 每项递增 24ms，**封顶第 6 项**（再长用户已经在看内容，延迟反而像卡顿）
+- 按压：`scale(.985)`，160ms
+- Toast：进场 240ms、离场 140ms，2.6 秒后自动消失，最多同时 3 条
+
+### 一个必须记住的坑：`animation-fill-mode`
+
+批量进场最初写的是 `both`，结果**所有卡片的 hover 上浮全部失效**。
+原因：`both` 会把元素钉在最后一帧（`transform: none`），而 CSS 动画的优先级高于普通声明，
+`:hover { transform: translateY(-2px) }` 永远不生效。改成 `backwards` 才是对的——
+延迟期间套用首帧，结束后交还给正常样式。
+
+### Toast
+
+`onToast` 之前只 `console.log`，等于所有 Java 侧的提示（应用到账号成功/失败、
+皮肤导入失败）都静默丢了。现在落到页面底部的 Toast 容器，带成功/失败配色。
+
+### 细节
+
+| 项 | 处理 |
+|---|---|
+| 实例卡加载器 | 左侧 3px 色条：Fabric 米、Forge 蓝灰、NeoForge 橙、Quilt 紫 |
+| 登录入口 | 加 36px 图标块，离线紫 / 微软蓝 / 外置绿 |
+| 账号行 | 选中态右侧加「当前」标签（暗色下只有底色差异看不出来） |
+| 设置页 | 改成 key-value 行，环境信息与外观开关分组 |
+| 下载页 | 三张入口卡等高，按钮沉底对齐 |
+| 主题 | 选过就存 `localStorage['mclab.theme']`，此后不再被 Java 推来的 state.theme 覆盖 |
+| 3D 预览 | 快照必须 `SnapshotParameters.setFill(TRANSPARENT)`，否则暗色下是一块白方块 |
+
+### 验收参数（新增两个）
+
+```bash
+-Dhmcl.web.theme=dark        # 强制深色验收
+-Dhmcl.web.rail=open|closed  # 侧栏展开/收起态
+```
+
+截图：`docs/ui2-accounts.png`、`ui2-download.png`、`ui2-settings.png`、
+`dark-home.png`、`dark-appearance.png`、`dark-accounts.png`。

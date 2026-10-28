@@ -229,7 +229,9 @@ body.rail-open .rail-item {
   width: 100%;
   grid-template-columns: 18px 1fr;
   gap: 10px;
-  align-items: center;
+  /* place-items 是 place-items: <align> <justify>；写成 center start 图标才贴左，
+     否则图标和文案各自在自己的列里居中，中间空出一大块（截图里就是这个毛病） */
+  place-items: center start;
   padding: 0 10px;
   text-align: left;
 }
@@ -618,7 +620,13 @@ body.rail-open .rail-toggle .ico-expand { display: block; }
   cursor: pointer; font-family: inherit;
   transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
-.seg button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); font-weight: 600; }
+.seg button.active {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  /* 白卡片上的白背景按钮几乎看不出来，靠内描边 + 主色文字把选中态钉住 */
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-1);
+}
 .seg.disabled { opacity: .45; }
 .seg.disabled button { cursor: default; }
 
@@ -744,6 +752,150 @@ body[data-theme="dark"] .asset-card .asset-badges .tag { background: rgba(20, 22
 }
 .ctx button:hover { background: var(--surface-2); }
 .ctx button.danger { color: var(--danger); }
+
+/* ============================================================================
+   动效与反馈
+   ----------------------------------------------------------------------------
+   手感的三个要素（按重要性排序）：
+     1. 曲线：进场用 ease-out（快起慢收），离场用更短的 ease-in；
+     2. 时长不对称：进场 240ms、离场 140ms —— 等长会让人觉得「点了没反应」；
+     3. 只动 transform / opacity，其余属性每帧触发布局，是掉帧头号原因。
+   ========================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --dur-enter: .24s;
+  --dur-leave: .14s;
+}
+
+/* 列表批量进场：同一批元素按 --i 依次延迟 24ms，总延迟封顶 120ms */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* fill-mode 必须是 backwards 而不是 both：
+   用 both 时动画结束后元素会被钉在最后一帧（transform: none），
+   于是 :hover 的 translateY(-2px) 永远不生效——踩过。 */
+.stagger > * {
+  animation: riseIn var(--dur-enter) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 24ms);
+}
+
+/* 页面切换：进场比离场慢，切走的那一帧不拖沓 */
+.page.on { animation: pageIn var(--dur-enter) var(--ease-out) both; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* 卡片按压：只压 1.5%，够给反馈又不晃眼 */
+.instance-card:active,
+.login-card:active,
+.asset-card:active { transform: translateY(0) scale(.985); transition-duration: var(--dur-fast); }
+
+/* 骨架屏：数据没到之前占位，避免「先空白再跳出来」 */
+@keyframes shimmer {
+  from { background-position: -220px 0; }
+  to   { background-position: 220px 0; }
+}
+.skeleton {
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%);
+  background-size: 440px 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+.skeleton-card { height: 84px; border-radius: var(--r-lg); }
+
+/* ---------------- Toast ---------------- */
+
+.toast-wrap {
+  position: fixed; left: 50%; bottom: 24px; z-index: 70;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 8px;
+  max-width: min(560px, 80vw);
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px; color: var(--text);
+  animation: toastIn var(--dur-enter) var(--ease-out) both;
+}
+.toast.out { animation: toastOut var(--dur-leave) var(--ease-in) both; }
+.toast.error { border-color: rgba(229, 72, 77, .45); }
+.toast::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); flex: 0 0 6px;
+}
+.toast.ok::before { background: #22c55e; }
+.toast.error::before { background: var(--danger); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px); } }
+
+/* ---------------- 页面细节 ---------------- */
+
+/* 实例卡：加载器用左侧 3px 色条区分，扫一眼就知道哪个是 Fabric / Forge */
+.instance-card::after {
+  content: ''; position: absolute; left: 0; top: 12px; bottom: 12px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--border-strong);
+}
+.instance-card[data-loader="Fabric"]::after { background: #c8b48a; }
+.instance-card[data-loader="Forge"]::after { background: #6f7ea8; }
+.instance-card[data-loader="NeoForge"]::after { background: #d08a4a; }
+.instance-card[data-loader="Quilt"]::after { background: #b06fc0; }
+
+/* 登录入口：加一个方块图标位，卡片不再是两行纯文字 */
+.login-card {
+  position: relative; justify-content: center; min-height: 78px;
+  padding-left: calc(var(--sp-4) + 44px);
+}
+.login-card .login-ico {
+  position: absolute; left: var(--sp-4); top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.login-card .login-ico svg { width: 18px; height: 18px; }
+.login-card[data-login="microsoft"] .login-ico { background: rgba(0, 164, 239, .12); color: #0a84c8; }
+.login-card[data-login="authlib"] .login-ico { background: rgba(34, 197, 94, .12); color: #16a34a; }
+body[data-theme="dark"] .login-card[data-login="microsoft"] .login-ico { color: #4cc2ff; }
+body[data-theme="dark"] .login-card[data-login="authlib"] .login-ico { color: #4ade80; }
+
+/* 账号行：选中态加一个右侧标签，否则只有底色差异在暗色下不明显 */
+.account-row.current::after {
+  content: '当前'; font-size: 11px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px;
+  margin-left: var(--sp-2);
+}
+
+/* 表格行悬停 */
+.table-row:not(.head):hover { background: var(--surface-2); }
+.table-row:not(.head) { cursor: default; }
+
+/* 设置页：一行一个键值，比一坨段落好读 */
+.kv { display: flex; align-items: baseline; gap: var(--sp-3); padding: 11px 0; border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: 0; }
+.kv .k { flex: 0 0 112px; font-size: 12.5px; color: var(--muted); }
+.kv .v { flex: 1; min-width: 0; font-size: 13px; word-break: break-all; }
+.settings-group { margin-bottom: var(--sp-4); }
+.settings-group h4 { margin: 0 0 var(--sp-1); font-size: 13.5px; }
+.settings-group .card { padding: 4px var(--sp-4); }
+
+/* 下载页：入口卡统一高度，按钮压到底部对齐 */
+.dl-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); min-height: 168px; }
+.dl-card .dl-head { display: flex; align-items: center; gap: 10px; }
+.dl-card .dl-ico {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.dl-card h4 { margin: 0; font-size: 14px; }
+.dl-card p { margin: 0; }
+.dl-card .btn { margin-top: auto; align-self: flex-start; }
 
 /* ============================================================================
    分辨率自适应

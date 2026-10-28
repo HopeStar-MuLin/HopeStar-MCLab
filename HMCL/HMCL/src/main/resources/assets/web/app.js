@@ -54,6 +54,34 @@
     return node;
   }
 
+  /* 批量进场：给子元素编号，CSS 用 --i 做 24ms 递进延迟。
+     超过 6 个就不再累加——再长用户已经在看内容了，动画反而像卡住。 */
+  function stagger(container) {
+    if (!container) { return; }
+    container.classList.add('stagger');
+    var kids = container.children;
+    for (var i = 0; i < kids.length; i++) {
+      kids[i].style.setProperty('--i', Math.min(i, 5));
+    }
+  }
+
+  // ---------------- Toast ----------------
+
+  function toast(text, kind) {
+    var wrap = document.getElementById('toast-wrap');
+    if (!wrap || !text) { return; }
+    var node = el('div', 'toast' + (kind ? ' ' + kind : ''), String(text));
+    wrap.appendChild(node);
+
+    // 最多同时挂 3 条，多了把最早的挤掉，避免糊住整个底部
+    while (wrap.children.length > 3) { wrap.removeChild(wrap.firstChild); }
+
+    var timer = setTimeout(function () {
+      node.classList.add('out');
+      setTimeout(function () { if (node.parentNode) { node.parentNode.removeChild(node); } }, 160);
+    }, 2600);
+  }
+
   function iconNode(inst, cls) {
     var img = document.createElement('img');
     img.className = cls;
@@ -88,6 +116,12 @@
     renderAccountPage();
     renderInstanceTable();
     document.getElementById('about-env').textContent = state.env || '';
+    var ua = document.getElementById('about-ua');
+    if (ua) {
+      // 只留内核标识，完整 UA 太长会撑破 kv 行
+      var m = /AppleWebKit\/[\d.]+/.exec(navigator.userAgent);
+      ua.textContent = m ? m[0] + '（JavaFX WebView）' : navigator.userAgent;
+    }
   }
 
   function selectedInstance() {
@@ -161,6 +195,8 @@
 
     list.forEach(function (inst) {
       var card = el('div', 'instance-card' + (inst.id === state.selected ? ' current' : ''));
+      // 左侧色条按加载器着色（见 app.css）
+      card.setAttribute('data-loader', inst.loader || '原版');
       card.appendChild(iconNode(inst, 'instance-icon'));
 
       var body = el('div', 'instance-body');
@@ -187,6 +223,7 @@
 
       grid.appendChild(card);
     });
+    stagger(grid);
   }
 
   function renderAccountPage() {
@@ -226,6 +263,7 @@
       });
       list.appendChild(row);
     });
+    stagger(list);
   }
 
   function renderInstanceTable() {
@@ -283,6 +321,7 @@
       });
       box.appendChild(item);
     });
+    stagger(box);
   }
 
   // ---------------- 图标选择 / 裁剪 ----------------
@@ -410,9 +449,16 @@
     var icon = document.getElementById('ph-icon');
     if (title) { title.textContent = meta.title; }
     if (desc) { desc.textContent = meta.desc; }
-    // 页头图标直接复刻对应侧栏项的图标，省一套素材也不会画得不一样
+    // 页头图标直接复刻对应侧栏项的图标；账号页没有侧栏入口，用内置的人像兜底
     if (icon) {
       var src = document.querySelector('.rail-nav .rail-item[data-page="' + page + '"] svg');
+      if (!src && page === 'accounts') {
+        src = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        src.setAttribute('viewBox', '0 0 24 24');
+        var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', 'M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4 0 7 1.8 7 4v2H5v-2c0-2.2 3-4 7-4z');
+        src.appendChild(path);
+      }
       icon.innerHTML = src ? src.outerHTML : '';
       var svg = icon.querySelector('svg');
       if (svg) { svg.removeAttribute('width'); svg.removeAttribute('height'); }
@@ -458,6 +504,7 @@
     if (btn) { btn.title = open ? '收起侧栏' : '展开侧栏'; }
     if (label) { label.textContent = open ? '收起侧栏' : '展开侧栏'; }
     try { localStorage.setItem(RAIL_KEY, open ? '1' : '0'); } catch (e) { /* 无痕模式无所谓 */ }
+    syncSeg('rail-seg', 'data-rail-set', open ? 'open' : 'closed');
   }
 
   /* 窗口宽度决定 rail 是否强制收起。
@@ -487,12 +534,62 @@
       setRail(!railOpen());
     });
 
+    var railSeg = document.getElementById('rail-seg');
+    if (railSeg) {
+      railSeg.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-rail-set]');
+        if (b) { setRail(b.getAttribute('data-rail-set') === 'open'); }
+      });
+    }
+
     syncNarrow();
     window.addEventListener('resize', syncNarrow);
   }
 
+  // ---------------- 主题 ----------------
+
+  var THEME_KEY = 'mclab.theme';
+
+  function syncSeg(id, attr, value) {
+    var seg = document.getElementById(id);
+    if (!seg) { return; }
+    var btns = seg.querySelectorAll('button');
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('active', btns[i].getAttribute(attr) === value);
+    }
+  }
+
+  function applyTheme(theme, persist) {
+    document.body.setAttribute('data-theme', theme);
+    if (persist) { try { localStorage.setItem(THEME_KEY, theme); } catch (e) { /* 忽略 */ } }
+    syncSeg('theme-seg', 'data-theme-set', theme);
+  }
+
+  function savedTheme() {
+    try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; }
+  }
+
+  function initTheme() {
+    // 没有用户选择时跟系统；有选择就不要再被 Java 推来的 state.theme 覆盖
+    var theme = savedTheme();
+    if (!theme) {
+      theme = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    applyTheme(theme, false);
+
+    var seg = document.getElementById('theme-seg');
+    if (seg) {
+      seg.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-theme-set]');
+        if (b) { applyTheme(b.getAttribute('data-theme-set'), true); }
+      });
+    }
+    syncSeg('rail-seg', 'data-rail-set', railOpen() ? 'open' : 'closed');
+  }
+
   function initUi() {
     initRail();
+    initTheme();
     setPageHead('home');
 
     var navs = document.querySelectorAll('.rail-nav .rail-item');
@@ -528,8 +625,7 @@
     initWindowDrag();
 
     document.getElementById('btn-theme').addEventListener('click', function () {
-      var body = document.body;
-      body.setAttribute('data-theme', body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+      applyTheme(document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark', true);
     });
     document.getElementById('btn-account-remove').addEventListener('click', function () {
       if (state.account) { call('removeAccount', state.account.uuid); }
@@ -840,6 +936,7 @@
           '披风需要自己导入，启动器不预置。这里只预览披风本身，鞘翅的样子由游戏内自行渲染。';
       }
     }
+    stagger(grid);
   }
 
   function initPreviewDrag() {
@@ -931,7 +1028,8 @@
   window.__hmcl = {
     onState: function (json) {
       try { state = JSON.parse(json); } catch (e) { console.error('bad state', e); return; }
-      if (state.theme) { document.body.setAttribute('data-theme', state.theme); }
+      // 只在用户没手动选过主题时跟随 Java 侧（跟随系统/启动器设置）
+      if (state.theme && !savedTheme()) { applyTheme(state.theme, false); }
       render();
     },
     onNews: function (json) {
@@ -939,7 +1037,8 @@
       renderNews();
     },
     onToast: function (text) {
-      console.log('[toast] ' + text);
+      // Java 侧的 Controllers.showToast 会落到这里
+      toast(text);
     },
     onAppearance: function (json) {
       try { renderAppearance(JSON.parse(json)); } catch (e) { console.error(e); }
