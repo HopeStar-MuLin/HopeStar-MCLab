@@ -67,8 +67,11 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
     private final WebBridge bridge;
 
     /// 外观页的 3D 预览：以覆盖层形式盖在 WebView 上方，位置由前端上报
+    private static final double PREVIEW_WIDTH = 320;
+    private static final double PREVIEW_HEIGHT = 420;
+
     private final SkinCanvas preview = new SkinCanvas(
-            org.jackhuang.hmcl.game.TexturesLoader.getDefaultSkinImage(), 320, 420, true);
+            org.jackhuang.hmcl.game.TexturesLoader.getDefaultSkinImage(), PREVIEW_WIDTH, PREVIEW_HEIGHT, true);
     private final Pane previewLayer = new Pane();
 
     public WebUIPage() {
@@ -88,7 +91,7 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         previewLayer.setPickOnBounds(false);
         previewLayer.setMouseTransparent(false);
 
-        getChildren().setAll(webView, previewLayer);
+        getChildren().setAll(previewLayer, webView);
 
         engine.getLoadWorker().stateProperty().addListener((observable, oldState, newState) -> {
             if (newState == Worker.State.SUCCEEDED) {
@@ -126,9 +129,18 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         if (shot != null && !shot.isBlank()) {
             // 截图模式下把窗口调到设计尺寸，避免默认窗口太窄看不出布局
             if (getScene() != null && getScene().getWindow() instanceof javafx.stage.Stage stage) {
-                stage.setWidth(1180);
-                stage.setHeight(780);
+                // 默认按设计尺寸截图，可用 -Dhmcl.web.size=1024x680 指定，方便检查不同窗口下的裁切
+                String size = System.getProperty("hmcl.web.size", "1180x780");
+                String[] parts = size.split("x");
+                stage.setWidth(Integer.parseInt(parts[0].trim()));
+                stage.setHeight(Integer.parseInt(parts[1].trim()));
             }
+            String scroll = System.getProperty("hmcl.web.scroll");
+            if (scroll != null && !scroll.isBlank()) {
+                webView.getEngine().executeScript(
+                        "var c = document.querySelector('.content'); if (c) c.scrollTop = " + scroll + ";");
+            }
+
             String page = System.getProperty("hmcl.web.page");
             if (page != null && !page.isBlank()) {
                 // 账号页没有侧栏入口，走左下角账号卡
@@ -173,13 +185,19 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         LOG.info("Web UI screenshot saved to " + FileUtils.getAbsolutePath(path));
     }
 
-    /// 外观页激活时把 3D 预览摆到前端上报的矩形上；矩形为 CSS 像素，与 JavaFX 逻辑像素一致
-    void placePreview(double x, double y, double width, double height) {
-        preview.relocate(x, y);
-        preview.setVisible(width > 0 && height > 0);
-        previewLayer.setVisible(preview.isVisible());
-        preview.setScaleX(Math.min(1.0, width / 320.0));
-        preview.setScaleY(Math.min(1.0, width / 320.0));
+    /// 把 3D 预览渲染成 PNG data URL 交给前端。
+    ///
+    /// 早期版本是把 JavaFX 画布直接盖在 WebView 上按矩形对位，但页面滚动、换行、缩放
+    /// 都会让两套坐标错开（人物被卡片裁掉、浮到别的内容上）。改成出图后，位置完全由 CSS 决定。
+    String snapshotPreview() {
+        try {
+            preview.setVisible(true);
+            Image image = preview.snapshot(new javafx.scene.SnapshotParameters(), null);
+            return WebBridge.imageToDataUrl(image, (int) PREVIEW_WIDTH);
+        } catch (Exception e) {
+            LOG.warning("Failed to snapshot skin preview", e);
+            return null;
+        }
     }
 
     void hidePreview() {

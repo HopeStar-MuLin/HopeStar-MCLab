@@ -403,6 +403,9 @@
     var tb = document.getElementById('tb-title');
     if (tb) { tb.textContent = titles[page] || ''; }
 
+    var scroller = document.querySelector('.content');
+    if (scroller) { scroller.scrollTop = 0; }
+
     if (page === 'appearance') {
       showAppearance();
     } else {
@@ -697,11 +700,57 @@
     }
   }
 
+  function initPreviewDrag() {
+    var img = document.getElementById('ap-preview');
+    if (!img) { return; }
+
+    var dragging = false;
+    var lastX = 0;
+    var lastY = 0;
+    var pending = 0;
+
+    img.addEventListener('mousedown', function (e) {
+      dragging = true;
+      lastX = e.screenX;
+      lastY = e.screenY;
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', function (e) {
+      if (!dragging) { return; }
+      var dx = e.screenX - lastX;
+      lastX = e.screenX;
+      lastY = e.screenY;
+      pending += dx;
+      if (Math.abs(pending) < 2) { return; }
+      call('rotatePreview', pending, 0);
+      pending = 0;
+    });
+
+    window.addEventListener('mouseup', function () { dragging = false; });
+  }
+
   function sendPreviewRect() {
     var slot = document.getElementById('preview-slot');
     if (!slot) { return; }
     var r = slot.getBoundingClientRect();
-    call('setPreviewRect', r.left, r.top, r.width, r.height);
+
+    // 预览区滚出可视范围时先藏起来，否则画布会浮在别的内容上面
+    var visible = r.bottom > 0 && r.top < window.innerHeight && r.width > 1;
+    call('setPreviewRect', visible ? r.left : 0, visible ? r.top : 0,
+        visible ? r.width : 0, visible ? r.height : 0);
+  }
+
+  var previewRectTimer = null;
+
+  function schedulePreviewRect() {
+    if (previewRectTimer) { return; }
+    previewRectTimer = setTimeout(function () {
+      previewRectTimer = null;
+      if (document.getElementById('page-appearance').classList.contains('active')) {
+        sendPreviewRect();
+      }
+    }, 40);
   }
 
   function showAppearance() {
@@ -748,11 +797,7 @@
     });
 
     document.addEventListener('click', closeCtx);
-    window.addEventListener('resize', function () {
-      if (document.getElementById('page-appearance').classList.contains('active')) {
-        sendPreviewRect();
-      }
-    });
+    initPreviewDrag();
   }
 
   // ---------------- Java 回调入口 ----------------
@@ -772,6 +817,10 @@
     },
     onAppearance: function (json) {
       try { renderAppearance(JSON.parse(json)); } catch (e) { console.error(e); }
+    },
+    onPreview: function (dataUrl) {
+      var img = document.getElementById('ap-preview');
+      if (img && dataUrl) { img.src = dataUrl; }
     },
     onServerCapes: function (json) {
       try { serverCapes = JSON.parse(json); } catch (e) { serverCapes = []; }

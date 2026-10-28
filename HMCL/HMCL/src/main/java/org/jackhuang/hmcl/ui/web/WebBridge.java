@@ -540,6 +540,8 @@ public final class WebBridge {
     private volatile Image accountCapeCache;
     private final Map<String, Image> serverCapeImages = new ConcurrentHashMap<>();
     private String pendingServerCape;
+    private double previewYaw = 180;
+    private boolean previewYawTouched;
 
     public String appearance() {
         Account account = Accounts.getSelectedAccount();
@@ -604,16 +606,20 @@ public final class WebBridge {
         return "other";
     }
 
-    /// 前端上报预览区矩形（CSS 像素），把 JavaFX 3D 画布摆上去
+    /// 兼容旧调用：现在预览以图片形式交给页面，位置完全由 CSS 决定
     public void setPreviewRect(double x, double y, double width, double height) {
-        Platform.runLater(() -> {
-            page.placePreview(x, y, width, height);
-            refreshPreview();
-        });
+        Platform.runLater(this::refreshPreview);
     }
 
     public void hidePreview() {
-        Platform.runLater(page::hidePreview);
+        // 图片跟随页面，不需要额外隐藏
+    }
+
+    /// 拖动预览旋转视角（水平）
+    public void rotatePreview(double deltaX, double deltaY) {
+        previewYawTouched = true;
+        previewYaw = ((previewYaw + deltaX * 0.45) % 360 + 360) % 360;
+        refreshPreview();
     }
 
     public void importSkin() {
@@ -827,8 +833,17 @@ public final class WebBridge {
         canvas.updateSkin(skin, slim, cape, elytra);
         boolean elytraMode = "elytra".equals(state.getCapeMode());
         canvas.setCapeMode(elytraMode ? SkinCanvas.CapeMode.ELYTRA : SkinCanvas.CapeMode.CAPE);
-        // 有背部挂件时侧一点角度，否则正面完全看不到披风/翅膀
-        canvas.setYaw(cape != null ? (elytraMode ? 335 : 350) : 180);
+
+        // 用户没手动转过视角时，按「有背饰看背面、没背饰看正面」给个默认角度
+        if (!previewYawTouched) {
+            previewYaw = cape != null ? (elytraMode ? 225 : 205) : 180;
+        }
+        canvas.setYaw(previewYaw);
+
+        String dataUrl = page.snapshotPreview();
+        if (dataUrl != null) {
+            execute("window.__hmcl && window.__hmcl.onPreview(" + JsonUtils.GSON.toJson(dataUrl) + ")");
+        }
     }
 
     /// 账号纹理到手后刷新缓存与预览

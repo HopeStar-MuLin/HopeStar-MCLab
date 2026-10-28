@@ -93,3 +93,45 @@ public void updateSkin(skin, slim, cape, elytraTexture) // 披风与鞘翅贴图
 2. 补「披风 / 鞘翅」双预览弹窗（导入时并排两个小预览）。
 3. 正版账号的皮肤上传做实际验证（需要真实账号点一次应用）。
 4. 之后再进下载页 + 内置 aria2（`aria2c.exe` 随包分发，默认 16 线程）。
+
+---
+
+## 六、追加：3D 预览从「覆盖层」改为「出图」（2026-10-28 下午）
+
+覆盖层方案（把 JavaFX 画布盖在 WebView 上，按前端上报的矩形对位）在实践中反复出问题：
+
+- 页面一旦滚动，画布和卡片就错位，人物浮在别的内容上；
+- 宽度不够时 CSS 换行，卡片变窄，画布还是 320 宽，人物溢出卡片；
+- 窗口高度不够时用媒体查询压矮卡片，画布不跟着变，头顶被裁掉。
+
+这些都属于「两套坐标系靠约定对齐」的固有缺陷。改为：
+
+1. 画布固定在场景里（放在 WebView **下面**，用户看不见），尺寸固定 320×420；
+2. 每次状态变化后 `preview.snapshot()` 出 PNG → base64 → 通过 `window.__hmcl.onPreview(dataUrl)` 推给页面；
+3. 页面里就是一个 `<img>`，`object-fit: contain`，位置/裁剪完全交给 CSS；
+4. 拖动图片旋转 → `bridge.rotatePreview(dx)` → 重出图。
+
+代价是拖动旋转从 60fps 降到「每次移动重出图」（几十毫秒一次，实测可接受）；
+换来的是**任何窗口尺寸、滚动、换行都不会错位**。
+
+## 七、本轮 UI 修的问题
+
+| 问题 | 原因 | 修法 |
+|---|---|---|
+| 实例卡片挤在左边，右侧空一条 | 网格用 `auto-fill`，不回收空轨道 | 改 `auto-fit`，最小宽 200px |
+| 皮肤卡片被拉到整行宽 | 同上（`1fr` 拉伸） | 固定 `112–132px` 轨道 + `justify-content:start` |
+| 滚动条压住卡片右边 | WebKit 滚动条占宽 | 自定义 8px 细滚动条 |
+| 窗口变窄时 Hero 按钮挤文字 | 单行 flex 挤压 | `flex-wrap: wrap` + `flex: 1 1 260px` |
+| 标题过长顶到窗口按钮 | 标题没有省略 | `min-width:0` + `text-overflow: ellipsis` |
+| 矮窗口下图标弹窗被截断 | 弹窗无高度约束 | `max-height: 90vh; overflow-y: auto` |
+| 点弹窗边缘变成拖窗口 | 缩放热区 z-index 高于弹窗 | 弹窗 z-index 提到 50 |
+| 切页后停在半截 | 内容区保留上次滚动位置 | 切页时 `scrollTop = 0` |
+| 实例表格列互相压 | 列宽比例固定 | 改 `minmax()` + 固定列宽 |
+
+## 八、验收截图（两种窗口尺寸）
+
+`docs/ui-home-960x640.png`、`ui-home-1440x900.png`、`ui-appearance-960x640.png`、
+`ui-appearance-1440x900.png`、`ui-accounts-960x640.png`、`ui-instances-960x640.png`。
+
+验收方式：`-Dhmcl.web.size=960x640` 控制窗口尺寸，`-Dhmcl.web.page=home|appearance|accounts|instances`
+控制落地页，`-Dhmcl.web.shot=<path>` 出图。
