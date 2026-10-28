@@ -91,17 +91,7 @@ public class SkinCanvas extends Group {
             capeCube
     );
 
-    /// 背饰渲染模式：披风（平板）或鞘翅（两片翅膀）
-    public enum CapeMode {
-        CAPE, ELYTRA
-    }
-
-    protected CapeMode capeMode = CapeMode.CAPE;
     protected boolean hasCape;
-
-    /// 鞘翅模型，贴图与披风同源（64×32），由调用方决定传披风图还是独立鞘翅图
-    public final ElytraModel elytra = new ElytraModel();
-    public final Group elytraGroup = new Group(elytra);
 
     /// 待机微摆：披风与鞘翅一起做极小幅度的呼吸式摆动，避免看起来像静止的模型
     private boolean swayEnabled;
@@ -119,8 +109,7 @@ public class SkinCanvas extends Group {
             swayLastNanos = now;
             swayPhase += elapsed * 1.15;
 
-            elytra.setSway(swayPhase);
-            // 外层已经固定了 10° 后倾，这里只叠加摆动分量，否则会变成 20°
+            // 外层已经固定了 6° 前倾，这里只叠加摆动分量
             capeGroup.getXRotate().setAngle(Math.sin(swayPhase * 0.85) * 1.1);
         }
     };
@@ -148,12 +137,6 @@ public class SkinCanvas extends Group {
     }
 
     public void updateSkin(Image skin, boolean isSlim, final @Nullable Image cape) {
-        updateSkin(skin, isSlim, cape, cape);
-    }
-
-    /// 带独立鞘翅贴图的版本。玩家披风文件里如果带了鞘翅图（CSL / 皮肤站），传进来单独渲染；
-    /// 否则调用方传 `null` 或直接复用披风图。
-    public void updateSkin(Image skin, boolean isSlim, final @Nullable Image cape, final @Nullable Image elytraTexture) {
         if (SkinHelper.isNoRequest(skin) && SkinHelper.isSkin(skin)) {
             this.srcSkin = skin;
             this.skin = SkinHelper.x32Tox64(skin);
@@ -164,21 +147,6 @@ public class SkinCanvas extends Group {
                 this.skin = SkinHelper.enlarge(this.skin, multiple, multiple);
             updateSkinModel(isSlim, cape != null);
             bindMaterial(root);
-            // 鞘翅贴图依次回退：独立鞘翅图 → 披风自带的鞘翅图案 → 官方 elytra.png。
-            // 关键在于第三档：没有鞘翅图案的披风绝不能把披风图案铺到翅膀上——
-            // 翼形是靠贴图 alpha 裁出来的，一块满绘的披风图只会渲染成一块板砖。
-            boolean dedicatedElytra = elytraTexture != null && elytraTexture != cape;
-            Image wingTexture;
-            if (dedicatedElytra) {
-                wingTexture = elytraTexture;
-            } else if (ElytraModel.hasElytraArt(cape)) {
-                wingTexture = cape;
-            } else {
-                wingTexture = ElytraModel.getDefaultElytraImage();
-            }
-            if (wingTexture != null) {
-                elytra.setTexture(wingTexture);
-            }
         }
     }
 
@@ -209,12 +177,6 @@ public class SkinCanvas extends Group {
         yRotate.setAngle(degree);
     }
 
-    /// 切换背饰形态：披风 / 鞘翅
-    public void setCapeMode(@Nullable CapeMode mode) {
-        this.capeMode = mode == null ? CapeMode.CAPE : mode;
-        applyCapeModeVisibility();
-    }
-
     /// 启动/停止待机微摆。预览页打开时开着，关掉页面时停掉，避免后台空转。
     public void setSwayEnabled(boolean enabled) {
         if (enabled == swayEnabled) {
@@ -228,13 +190,10 @@ public class SkinCanvas extends Group {
         }
     }
 
-    public CapeMode getCapeMode() {
-        return capeMode;
-    }
-
     private void applyCapeModeVisibility() {
-        capeGroup.setVisible(hasCape && capeMode == CapeMode.CAPE);
-        elytra.setVisible(hasCape && capeMode == CapeMode.ELYTRA);
+        // 只预览披风。鞘翅的形状依赖飞行姿态与贴图 alpha，启动器里还原不准，
+        // 与其给一个似是而非的样子，不如交给游戏自己渲染。
+        capeGroup.setVisible(hasCape);
     }
 
     public SkinCanvas(Image skin, double preW, double preH, boolean msaa) {
@@ -262,9 +221,7 @@ public class SkinCanvas extends Group {
             else if (node instanceof SkinMultipleCubes)
                 ((SkinMultipleCubes) node).updateSkin(skin);
             else if (node instanceof Group)
-                // 鞘翅用自己的贴图，不能被皮肤的材质覆盖
-                if (node != elytraGroup)
-                    bindMaterial((Group) node);
+                bindMaterial((Group) node);
     }
 
     protected Group createPlayerModel() {
@@ -287,16 +244,6 @@ public class SkinCanvas extends Group {
         // 原版站立姿态的披风前倾 6°（PlayerCapeModel 里是 6.0 + 移动量），不是 10°
         capeGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(6, Rotate.X_AXIS));
 
-        // 鞘翅挂点按原版 ElytraModel 摆：模型根在身体原点，翼根就在肩线（MC 的 y=0）。
-        // 原版 PartPose 只有 offset(5,0,0) 和 ±15° 的 z/x 旋转，这里是组级挂点，
-        // 所以 Y 顶到身体上沿，Z 保持在身体中线（左右翼的厚度自己会占到背外侧）。
-        elytraGroup.setTranslateY(-bodyOuter.getHeight() / 2);
-        // z 保持 0：原版鞘翅方块的 z 是 -1..3（身体 -2..2），外表面只比背多出 1 格。
-        // 之前放在 -4（跟着旧披风走）会让翅膀整个悬到身后，看着像飘在空中。
-        elytraGroup.setTranslateZ(0);
-        // 只做朝向翻转：原版模型是面朝 -z、背朝 +z，这里正好反过来
-        elytraGroup.getTransforms().add(new Rotate(180, Rotate.Y_AXIS));
-
         root.getTransforms().addAll(xRotate);
 
         root.getChildren().addAll(
@@ -306,8 +253,7 @@ public class SkinCanvas extends Group {
                 rarm,
                 lleg,
                 rleg,
-                capeGroup,
-                elytraGroup
+                capeGroup
         );
         updateSkin(skin, false, null);
 
@@ -325,6 +271,11 @@ public class SkinCanvas extends Group {
         group.getChildren().add(createPlayerModel());
         group.getTransforms().add(zRotate);
 
+        // 深度精度：默认 near=0.1 / far=100，模型在 80 单位处，16 位深度缓冲在该距离的
+        // 分辨力约 1 个单位——而鞘翅只比背多出 0.9 格，于是翅膀被身体「错误遮挡」。
+        // 把近平面推到模型前方（40）后，同样距离的精度提升到 1/40，细小间距也能正确判序。
+        camera.setNearClip(40);
+        camera.setFarClip(200);
         camera.getTransforms().addAll(yRotate, translate, scale);
 
         subScene = new SubScene(group, preW, preH, true,

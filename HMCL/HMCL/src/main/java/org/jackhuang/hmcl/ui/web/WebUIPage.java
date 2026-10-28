@@ -202,6 +202,10 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
     /// 都会让两套坐标错开（人物被卡片裁掉、浮到别的内容上）。改成出图后，位置完全由 CSS 决定。
     String snapshotPreview() {
         try {
+            // 画布被 WebView 盖在下面，用户看不见；但快照要求节点在场景里且可见，
+            // 连同父容器一起点亮，否则截出来是空白（踩过：离开外观页时父容器被隐藏，
+            // 再回来预览就一直空白）。
+            previewLayer.setVisible(true);
             preview.setVisible(true);
             Image image = preview.snapshot(new javafx.scene.SnapshotParameters(), null);
             return WebBridge.imageToDataUrl(image, (int) PREVIEW_WIDTH);
@@ -211,9 +215,8 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
         }
     }
 
+    /// 预览以图片形式呈现，画布本身不需要显示/隐藏，这里保留空实现兼容旧调用
     void hidePreview() {
-        preview.setVisible(false);
-        previewLayer.setVisible(false);
     }
 
     SkinCanvas getPreviewCanvas() {

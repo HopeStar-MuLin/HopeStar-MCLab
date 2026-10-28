@@ -415,3 +415,74 @@ body.addOrReplaceChild("cape",
 ### 验收截图
 
 `docs/ap-cape.png`、`docs/ap-skin.png`、`docs/ap-cape-1440x900.png`
+
+---
+
+## 十三、取消鞘翅预览（最终决定）
+
+### 决定
+
+外观页只预览**披风**。鞘翅样式交给游戏自己渲染，启动器不再尝试还原。
+
+去掉的东西：`披风 / 鞘翅` 开关、`ElytraModel`、`applyCapeModeVisibility` 里的鞘翅分支、
+`State.capeMode` 字段、`setCapeMode` 接口、导入披风时的第二张「鞘翅贴图」槽位、
+内置的 `assets/img/elytra/elytra.png`、卡片上的「含鞘翅」徽章。
+
+### 为什么放弃
+
+鞘翅的最终外观取决于三件启动器里无法同时成立的事：
+
+1. **飞行姿态**。`ElytraAnimationState` 里 rotZ 从站立的 ∓15° 插值到滑翔时的 ∓90°，
+   截图里看到的形状其实是滑翔姿态；预览是站立姿态，两者本来就不一样。
+2. **贴图 alpha**。翼形完全由贴图透明区裁出，JavaFX 3D 对带 alpha 贴图的面
+   在深度排序上不稳定，翅膀与身体交叠处会闪烁或误遮挡。
+3. **两组变换叠加**。`WingsLayer` 在渲染前还有 `poseStack.translate(0, 0, 0.125)`，
+   配合模型自身 ±5 的枢轴和 12×22×4 的膨胀体，任何一处换算偏差都会让翅膀
+   变成「贴在背上的两块板」——踩了四五轮才把枢轴和 z 偏移都对齐，仍然和游戏有观感差距。
+
+披风不一样：它是一块 10×16 的平面，贴图直接铺满，位置只受站立姿态影响，
+渲染结果稳定可预期。
+
+### 保留的调研结论（以后要重做直接照这个来）
+
+原版参数（`26.3.jar` 反编译所得）：
+
+```java
+// ElytraModel.createLayer()
+CubeDeformation grow = new CubeDeformation(1.0F);
+left_wing  : texOffs(22,0) addBox(-10,0,0, 10,20,2, grow)  PartPose(5,0,0)  rot(15°,0,-15°)
+right_wing : texOffs(22,0) addBox(  0,0,0, 10,20,2, grow)  PartPose(-5,0,0) rot(15°,0, 15°) mirror
+
+// WingsLayer.submit()
+poseStack.translate(0, 0, 0.125)   // 往背后推 2 像素
+
+// ElytraAnimationState.tick()
+站立  rotX=15°  rotZ=∓15°
+潜行  rotX=40°  rotZ=∓45°  rotY=5°
+滑翔  rotX 15°→20°，rotZ -15°→-90°（按速度插值）
+```
+
+四个容易搞错的点：
+
+1. 几何是 **12×22×4**（`CubeDeformation(1.0)` 每面各撑 1），不是 `addBox` 里的 10×20×2。
+2. UV 仍按 **10×20×2** 排，起点 `(22,0)`，整块占 24×22 像素。
+3. 两片翼各自横跨 **-6..+6**，几乎完全重叠，靠 ±15° 的 z 旋转拉开夹角，不是各占半边。
+4. 翼形来自**贴图 alpha**，原版只画朝外那一面（UV 背面 `(36,2)`）。
+
+披风参数（`PlayerCapeModel`）：
+
+```java
+texOffs(0,0) addBox(-5, 0, -1, 10, 16, 1)
+PartPose.offsetAndRotation(0, 0, 2, 0, π, 0)   // 站立时再叠加 rotateX(6° + 移动量)
+```
+
+### 顺带修掉的一个真 bug
+
+`WebUIPage.hidePreview()` 会把承载 3D 画布的容器隐藏，而画布被 WebView 盖在下面、
+本来就不需要隐藏。离开一次外观页再回来，画布父容器一直是隐藏的，
+`snapshot()` 于是永远截出空白——预览整个消失。现在改为空实现，
+并在 `snapshotPreview()` 里连同父容器一起点亮。
+
+### 验收
+
+`docs/ap-cape.png`（披风，3/4 背视）、`docs/ap-skin.png`（皮肤，正面）。

@@ -533,20 +533,9 @@
 
     // 模型 / 背饰开关
     var model = (apData.state && apData.state.model) === 'slim' ? 'slim' : 'default';
-    var capeMode = (apData.state && apData.state.capeMode) === 'elytra' ? 'elytra' : 'cape';
     var segs = document.querySelectorAll('#model-seg button');
     for (var i = 0; i < segs.length; i++) {
       segs[i].classList.toggle('active', segs[i].getAttribute('data-model') === model);
-    }
-    var csegs = document.querySelectorAll('#cape-seg button');
-    for (var j = 0; j < csegs.length; j++) {
-      csegs[j].classList.toggle('active', csegs[j].getAttribute('data-cape-mode') === capeMode);
-    }
-    // 没选披风时「披风 / 鞘翅」这组开关没有意义，置灰而不是隐藏，避免布局跳动
-    var hasBack = hasBackEquipment();
-    document.getElementById('cape-seg').classList.toggle('disabled', !hasBack);
-    for (var k = 0; k < csegs.length; k++) {
-      csegs[k].disabled = !hasBack;
     }
 
     document.getElementById('ap-apply').disabled = readOnly;
@@ -564,23 +553,6 @@
     }
 
     renderAssetGrid();
-  }
-
-  /// 当前是否戴着背饰（披风或鞘翅）。正版账号还要看待提交的服务器披风状态。
-  function hasBackEquipment() {
-    if (!apData) { return false; }
-    var state = apData.state || {};
-    if (apData.kind === 'microsoft') {
-      var pending = apData.pendingServerCape;
-      if (pending === '') { return false; }
-      if (pending) { return true; }
-      if (serverCapes) {
-        return serverCapes.some(function (c) { return c.active; });
-      }
-      return !!apData.accountCape;
-    }
-    if (apData.kind === 'authlib') { return !!apData.accountCape; }
-    return !!state.cape;
   }
 
   function assetCard(opts) {
@@ -764,7 +736,6 @@
             id: c.id,
             name: c.name,
             preview: c.preview,
-            badges: c.hasElytra ? ['含鞘翅'] : [],
             current: state.cape === c.id,
             onSelect: function () { call('selectCape', c.id); },
             onContext: readOnly ? null : [
@@ -778,10 +749,10 @@
         });
 
         if (!capes.length) {
-          grid.appendChild(el('div', 'empty', '还没有导入披风。导入时可以一次选两张图：第一张披风，第二张鞘翅。'));
+          grid.appendChild(el('div', 'empty', '还没有导入披风，点右上角「导入文件」。'));
         }
         document.getElementById('ap-tip').textContent =
-          '披风需要自己导入，启动器不预置；披风可附带独立鞘翅贴图，没有的话鞘翅会直接用披风贴图渲染。';
+          '披风需要自己导入，启动器不预置。这里只预览披风本身，鞘翅的样子由游戏内自行渲染。';
       }
     }
   }
@@ -868,24 +839,6 @@
         call('setSkinModel', this.getAttribute('data-model'));
       });
     }
-
-    var capeBtns = document.querySelectorAll('#cape-seg button');
-    for (var c = 0; c < capeBtns.length; c++) {
-      capeBtns[c].addEventListener('click', function () {
-        call('setCapeMode', this.getAttribute('data-cape-mode'));
-      });
-    }
-
-    document.getElementById('ap-import').addEventListener('click', function () {
-      if (apTab === 'skin') { call('importSkin'); } else { call('importCape'); }
-    });
-
-    document.getElementById('ap-apply').addEventListener('click', function () {
-      call('applyAppearance');
-    });
-
-    document.addEventListener('click', closeCtx);
-    initPreviewDrag();
   }
 
   // ---------------- Java 回调入口 ----------------
@@ -929,7 +882,6 @@
     },
     onServerCapes: function (json) {
       try { serverCapes = JSON.parse(json || '[]'); } catch (e) { serverCapes = []; }
-      // 披风列表到手后要同步刷「披风 / 鞘翅」开关的可用状态
       if (apData) { renderAppearance(apData); }
     }
   };

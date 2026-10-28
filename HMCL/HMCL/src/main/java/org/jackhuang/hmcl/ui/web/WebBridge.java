@@ -562,7 +562,6 @@ public final class WebBridge {
         stateJson.addProperty("skin", state.getSkin());
         stateJson.addProperty("cape", state.getCape());
         stateJson.addProperty("model", state.getModel());
-        stateJson.addProperty("capeMode", state.getCapeMode());
         root.add("state", stateJson);
         // 空串 = 用户明确选了「不戴披风」但还没应用；null = 没动过
         root.addProperty("pendingServerCape", pendingServerCape);
@@ -592,10 +591,6 @@ public final class WebBridge {
                         : AppearanceThumbnails.capeFront(texture));
             } catch (Exception e) {
                 item.addProperty("preview", (String) null);
-            }
-            if (kind == AppearanceStore.Kind.CAPE && asset.isHasElytra()) {
-                Image elytra = appearance.elytraImage(asset);
-                item.addProperty("elytraPreview", elytra != null ? imageToDataUrl(elytra, 64) : (String) null);
             }
             array.add(item);
         }
@@ -694,19 +689,17 @@ public final class WebBridge {
         }
     }
 
-    /// 选披风文件；多选第二张作为独立鞘翅贴图
+    /// 选披风文件
     public void importCape() {
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("导入披风（可同时选中鞘翅贴图）");
+        chooser.setTitle("导入披风");
         chooser.getExtensionFilters().add(FXUtils.getImageExtensionFilter());
-        List<File> files = chooser.showOpenMultipleDialog(Controllers.getStage());
-        if (files == null || files.isEmpty()) {
+        Path file = Controllers.showOpenDialog(chooser);
+        if (file == null) {
             return;
         }
         try {
-            Path capeFile = files.get(0).toPath();
-            Path elytraFile = files.size() > 1 ? files.get(1).toPath() : null;
-            AppearanceStore.Asset asset = appearance.importCape(capeFile, elytraFile);
+            AppearanceStore.Asset asset = appearance.importCape(file, null);
             AppearanceStore.State state = stateOfSelectedAccount();
             state.cape = asset.getId();
             appearance.saveState(selectedAccountId(), state);
@@ -777,14 +770,6 @@ public final class WebBridge {
     public void setSkinModel(String model) {
         AppearanceStore.State state = stateOfSelectedAccount();
         state.model = "slim".equals(model) ? "slim" : "default";
-        appearance.saveState(selectedAccountId(), state);
-        pushAppearance();
-        refreshPreview();
-    }
-
-    public void setCapeMode(String mode) {
-        AppearanceStore.State state = stateOfSelectedAccount();
-        state.capeMode = "elytra".equals(mode) ? "elytra" : "cape";
         appearance.saveState(selectedAccountId(), state);
         pushAppearance();
         refreshPreview();
@@ -874,7 +859,6 @@ public final class WebBridge {
         }
 
         Image cape = null;
-        Image elytra = null;
         boolean capeDecided = false;
 
         // 正版账号：用户点过服务器披风列表之后，pendingServerCape 就是最终决定
@@ -891,7 +875,6 @@ public final class WebBridge {
             if (capeAsset != null) {
                 try {
                     cape = appearance.image(AppearanceStore.Kind.CAPE, capeAsset);
-                    elytra = appearance.elytraImage(capeAsset);
                 } catch (IOException e) {
                     LOG.warning("Failed to load selected cape", e);
                 }
@@ -903,15 +886,15 @@ public final class WebBridge {
         }
 
         SkinCanvas canvas = page.getPreviewCanvas();
-        canvas.updateSkin(skin, slim, cape, elytra);
-        boolean elytraMode = "elytra".equals(state.getCapeMode());
-        canvas.setCapeMode(elytraMode ? SkinCanvas.CapeMode.ELYTRA : SkinCanvas.CapeMode.CAPE);
+        // 只预览披风。鞘翅的形态取决于飞行姿态和贴图 alpha，启动器里还原不准，
+        // 与其给一个似是而非的样子，不如交给游戏自己渲染。
+        canvas.updateSkin(skin, slim, cape);
 
         // 皮肤标签看正面；披风标签转到背面 3/4，否则选了披风也看不见。
-        // 没有背饰时一律正面——转过去只会看到后脑勺。
+        // 没有披风时一律正面——转过去只会看到后脑勺。
         if (!previewYawTouched) {
             boolean wantBack = cape != null && "cape".equals(appearanceTab);
-            previewYaw = wantBack ? (elytraMode ? 318 : 326) : 180;
+            previewYaw = wantBack ? 326 : 180;
         }
         // 标定用：-Dhmcl.web.yaw=210 强制指定视角，方便一次性出多角度对照图
         String forcedYaw = System.getProperty("hmcl.web.yaw");

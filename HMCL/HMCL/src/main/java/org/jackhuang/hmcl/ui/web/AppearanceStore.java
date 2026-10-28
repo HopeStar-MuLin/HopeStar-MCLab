@@ -121,16 +121,14 @@ public final class AppearanceStore {
         String skin;
         String cape;
         String model;
-        String capeMode;
 
         public State() {
         }
 
-        public State(String skin, String cape, String model, String capeMode) {
+        public State(String skin, String cape, String model) {
             this.skin = skin;
             this.cape = cape;
             this.model = model;
-            this.capeMode = capeMode;
         }
 
         public String getSkin() {
@@ -143,10 +141,6 @@ public final class AppearanceStore {
 
         public String getModel() {
             return model;
-        }
-
-        public String getCapeMode() {
-            return capeMode;
         }
     }
 
@@ -426,20 +420,17 @@ public final class AppearanceStore {
     public State stateOf(String accountId) {
         Path file = STATE_DIR.resolve(accountId + ".json");
         if (!Files.isRegularFile(file)) {
-            return new State(null, null, null, "cape");
+            return new State(null, null, null);
         }
         try {
             State state = JsonUtils.fromJson(Files.readString(file), State.class);
             if (state == null) {
-                return new State(null, null, null, "cape");
-            }
-            if (state.capeMode == null) {
-                state.capeMode = "cape";
+                return new State(null, null, null);
             }
             return state;
         } catch (Exception e) {
             LOG.warning("Failed to read appearance state for " + accountId, e);
-            return new State(null, null, null, "cape");
+            return new State(null, null, null);
         }
     }
 
@@ -499,42 +490,4 @@ public final class AppearanceStore {
         }
     }
 
-    /// 预览用：按账号状态挑出要渲染的三张图
-    public Preview resolve(String accountId) {
-        State state = stateOf(accountId);
-
-        Image skinImage = null;
-        boolean slim = false;
-
-        Asset skin = find(Kind.SKIN, state.skin);
-        if (skin != null) {
-            try {
-                skinImage = image(Kind.SKIN, skin);
-                slim = TextureModel.SLIM.modelName.equals(skin.model);
-            } catch (IOException e) {
-                LOG.warning("Failed to load skin " + skin.id, e);
-            }
-        }
-
-        Image capeImage = null;
-        Image elytraImage = null;
-
-        Asset cape = find(Kind.CAPE, state.cape);
-        if (cape != null) {
-            try {
-                capeImage = image(Kind.CAPE, cape);
-                elytraImage = elytraImage(cape);
-            } catch (IOException e) {
-                LOG.warning("Failed to load cape " + cape.id, e);
-            }
-        }
-
-        return new Preview(skinImage, slim, capeImage, elytraImage, state.capeMode);
-    }
-
-    public record Preview(Image skin, boolean slim, Image cape, Image elytra, String capeMode) {
-        public boolean hasCape() {
-            return cape != null;
-        }
-    }
 }
