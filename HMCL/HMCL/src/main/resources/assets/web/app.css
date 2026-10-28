@@ -446,3 +446,20 @@ body[data-theme="dark"] .icon-sun { display: block; }
   .asset-grid { max-height: 340px; }
   .ap-left { gap: 10px; }
 }
+
+/* ---------------- 外观页补充 ---------------- */
+
+/* 「无披风」这类没有缩略图的卡片，用图标占位，尺寸和图片卡保持一致 */
+.asset-card .asset-glyph {
+  width: 76px; height: 76px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.asset-card .asset-glyph svg {
+  width: 46px; height: 46px;
+  fill: none;
+}
+
+/* 置灰的分段开关：仍然占位，但点不动 */
+.seg.disabled { opacity: .45; }
+.seg.disabled button { cursor: default; }

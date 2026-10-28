@@ -21,124 +21,156 @@ import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.paint.Material;
 import javafx.scene.paint.PhongMaterial;
-import javafx.scene.shape.CullFace;
-import javafx.scene.shape.MeshView;
-import javafx.scene.shape.TriangleMesh;
 import javafx.scene.transform.Rotate;
-import javafx.scene.transform.Translate;
 
 /**
  * 鞘翅模型。
  *
- * <p>Minecraft 里鞘翅贴图与披风同为 64×32，披风图案区域位于 {@code (1,1)-(11,17)}。
- * 玩家有披风时，游戏正是把披风贴图套到鞘翅上；所以这里只接受一张 64×32 的贴图，
- * 调用方决定传披风图还是独立的鞘翅图（见 {@code AppearanceStore} 的回退规则）。
+ * <p>几何照抄原版 {@code ModelElytra}（1.9 起未变）：左右各一片 <b>10×20×2 的实体方块</b>，
+ * 贴图区在 64×32 纹理的 {@code (22,0)}，占 10×20 图案 + 2 像素厚度。
  *
- * <p>几何：左右各一片弯曲的网格，向外张开 22°，从肩部向下垂，末端略向外翻。
- * 局部坐标以「块」为单位，1 格 = 1 个像素单位（与 {@link SkinCube} 的披风 10×16 一致）。
+ * <p>最早的实现把翅膀做成了零厚度的曲面片，结果只要不是正对镜头就只剩一条边——
+ * 这是「看不到鞘翅」的真正原因，而不是角度问题。原版和 skinview3d 用的都是有厚度的方块，
+ * 侧面自带明暗，转到任何角度都能看出形状。
+ *
+ * <p>贴图有两种取法，由 {@link WingTexture} 决定：
+ * <ul>
+ *   <li>{@link WingTexture#ELYTRA_REGION}：披风文件里带了独立鞘翅图，用 {@code (22,0)} 区域，正宗布局；</li>
+ *   <li>{@link WingTexture#CAPE_REGION}：只有披风图，把披风图案区 {@code (0,0)-(22,22)} 铺到翅膀上。</li>
+ * </ul>
+ * 两套网格几何完全相同，只是 UV 起点不同，切换时改显隐即可，不重建网格。
  */
 public final class ElytraModel extends Group {
 
-    /// 单片翅膀的宽度（格）
-    private static final float WING_WIDTH = 5.0f;
-    /// 单片翅膀的高度（格）
-    private static final float WING_HEIGHT = 15.5f;
-    /// 向外张开的弧度
-    private static final double SPLAY_DEGREE = 22.0;
+    /// 贴图取值方式
+    public enum WingTexture {
+        /// 披风文件自带鞘翅图，按原版布局取 (22,0)
+        ELYTRA_REGION,
+        /// 没有鞘翅图，把披风图案铺到翅膀上
+        CAPE_REGION
+    }
 
-    private final MeshView leftWing;
-    private final MeshView rightWing;
+    /// 单片翅膀尺寸，与原版 ModelElytra.addBox(-10, 0, 0, 10, 20, 2) 一致
+    private static final float WING_WIDTH = 10f;
+    private static final float WING_HEIGHT = 20f;
+    private static final float WING_DEPTH = 2f;
+
+    /// 向外张开的度数。原版静止姿态约 13°，张太开会像蝴蝶，太小会贴着背看不见。
+    private static final double SPLAY_DEGREE = 15.0;
+    /// 向后倾的度数，让翅膀离开背部一点，避免和身体穿插
+    private static final double TILT_DEGREE = 11.0;
+    /// 两片翅膀中缝留的空隙（格），太贴会 z-fighting
+    private static final double CENTER_GAP = 0.4;
+
+    /// 纹理归一化：宽 2*(10+2)=24，高 20+2=22
+    private static final float UV_SCALE_X = 24F / 64F;
+    private static final float UV_SCALE_Y = 22F / 32F;
+    /// 原版鞘翅图案起点
+    private static final float UV_ELYTRA_X = 22F / 64F;
+    private static final float UV_CAPE_X = 0F;
+
+    /// [0] 左翼，[1] 右翼；每片两份网格，对应两种 UV 取法
+    private final Group[] wingGroups = new Group[2];
+    private final SkinCube[][] wingMeshes = new SkinCube[2][2];
+
+    private WingTexture currentMode = WingTexture.ELYTRA_REGION;
+
+    /// 基础倾角，供待机摆动在它上面叠加
+    private final Rotate[] swayX = {new Rotate(TILT_DEGREE, Rotate.X_AXIS), new Rotate(TILT_DEGREE, Rotate.X_AXIS)};
 
     public ElytraModel() {
-        leftWing = createWing(true);
-        rightWing = createWing(false);
+        for (int side = 0; side < 2; side++) {
+            boolean left = side == 0;
+            Group group = new Group();
 
-        Group left = new Group(leftWing);
-        left.getTransforms().add(new Rotate(-SPLAY_DEGREE, Rotate.Y_AXIS));
-        left.getTransforms().add(new Translate(-0.4, 0, 0));
+            // 网格默认以自身中心为原点；把内上角挪到组的原点，旋转才会绕着肩部转
+            double meshX = left ? -WING_WIDTH / 2 : WING_WIDTH / 2;
+            double meshY = WING_HEIGHT / 2;
 
-        Group right = new Group(rightWing);
-        right.getTransforms().add(new Rotate(SPLAY_DEGREE, Rotate.Y_AXIS));
-        right.getTransforms().add(new Translate(0.4, 0, 0));
+            SkinCube elytraMesh = createWingMesh(UV_ELYTRA_X);
+            SkinCube capeMesh = createWingMesh(UV_CAPE_X);
+            for (SkinCube mesh : new SkinCube[]{elytraMesh, capeMesh}) {
+                mesh.setTranslateX(meshX);
+                mesh.setTranslateY(meshY);
+                group.getChildren().add(mesh);
+            }
 
-        getChildren().setAll(left, right);
+            // 外张：左翼往 -x 张开，右翼镜像
+            group.getTransforms().add(new Rotate(left ? SPLAY_DEGREE : -SPLAY_DEGREE, Rotate.Z_AXIS));
+            group.getTransforms().add(swayX[side]);
+            group.setTranslateX(left ? -CENTER_GAP : CENTER_GAP);
+
+            wingMeshes[side][0] = capeMesh;
+            wingMeshes[side][1] = elytraMesh;
+            wingGroups[side] = group;
+            getChildren().add(group);
+        }
+
+        applyTextureMode();
         setVisible(false);
     }
 
+    private static SkinCube createWingMesh(float uvStartX) {
+        // 不放大（enlarge = 0），与原版一致；SkinCube 内部会把面片正反各生成一份，
+        // 所以翅膀两面都能看到图案，不需要额外处理 CullFace
+        return new SkinCube(WING_WIDTH, WING_HEIGHT, WING_DEPTH,
+                UV_SCALE_X, UV_SCALE_Y, uvStartX, 0F, 0F, false);
+    }
+
+    /**
+     * 选择贴图取法。
+     *
+     * @param mode 披风文件是否自带鞘翅图
+     */
+    public void setWingTexture(WingTexture mode) {
+        if (mode == null || mode == currentMode) {
+            return;
+        }
+        currentMode = mode;
+        applyTextureMode();
+    }
+
+    public WingTexture getWingTexture() {
+        return currentMode;
+    }
+
+    private void applyTextureMode() {
+        int index = currentMode == WingTexture.ELYTRA_REGION ? 1 : 0;
+        for (int side = 0; side < 2; side++) {
+            wingMeshes[side][0].setVisible(index == 0);
+            wingMeshes[side][1].setVisible(index == 1);
+        }
+    }
+
     public void setMaterial(Material material) {
-        leftWing.setMaterial(material);
-        rightWing.setMaterial(material);
+        for (SkinCube[] pair : wingMeshes) {
+            for (SkinCube mesh : pair) {
+                mesh.setMaterial(material);
+            }
+        }
     }
 
     public void setTexture(Image texture) {
         PhongMaterial material = new PhongMaterial();
         material.setDiffuseMap(texture);
+        // 与身体保持同一套哑光设置，否则翅膀会比身体亮一截，看着像贴纸
+        material.setSpecularColor(javafx.scene.paint.Color.gray(0.08));
+        material.setSpecularPower(12);
         setMaterial(material);
     }
 
     /**
-     * 生成一片翅膀。
+     * 待机微摆。
      *
-     * @param left true 为左翼（贴图取披风图案左半边并镜像），false 为右翼
+     * <p>完全静止的翅膀看起来像塑料模型，给一个极小幅度的正弦摆动就自然得多。
+     *
+     * @param phase 相位（弧度），由调用方按时间推进
      */
-    private static MeshView createWing(boolean left) {
-        final int cols = 4;
-        final int rows = 6;
-
-        TriangleMesh mesh = new TriangleMesh();
-        // 顶点：网格点 (cols+1) * (rows+1)
-        for (int j = 0; j <= rows; j++) {
-            float v = (float) j / rows;
-            for (int i = 0; i <= cols; i++) {
-                float u = (float) i / cols;
-
-                float x = left ? -u * WING_WIDTH : u * WING_WIDTH;
-                float y = -v * WING_HEIGHT;
-                // 沿高度方向向后弯，末端再稍微向外翻，避免看起来像一块平板
-                float z = (float) (Math.sin(v * Math.PI * 0.55) * 1.6 + v * v * 0.8);
-
-                mesh.getPoints().addAll(x, y, z);
-            }
+    public void setSway(double phase) {
+        for (int side = 0; side < 2; side++) {
+            // 两片翅膀相位差一点点，避免完全同步显得机械
+            double offset = side == 0 ? 0 : 0.35;
+            swayX[side].setAngle(TILT_DEGREE + Math.sin(phase + offset) * 1.6);
         }
-
-        // 贴图坐标：披风图案区域 (1,1)-(11,17) / 64x32，左右各取一半
-        final float uMin = 1f / 64f;
-        final float uMid = 6f / 64f;
-        final float uMax = 11f / 64f;
-        final float vMin = 1f / 32f;
-        final float vMax = 17f / 32f;
-
-        for (int j = 0; j <= rows; j++) {
-            float v = vMin + (vMax - vMin) * (float) j / rows;
-            for (int i = 0; i <= cols; i++) {
-                float t = (float) i / cols;
-                // 左翼镜像，让两片翅膀的花纹从中间向外对称
-                float u = left ? uMid - (uMid - uMin) * t : uMid + (uMax - uMid) * t;
-                mesh.getTexCoords().addAll(u, v);
-            }
-        }
-
-        // 面：每个方格两个三角形（逆时针，外侧朝 +z）
-        for (int j = 0; j < rows; j++) {
-            for (int i = 0; i < cols; i++) {
-                int p00 = j * (cols + 1) + i;
-                int p10 = p00 + 1;
-                int p01 = p00 + (cols + 1);
-                int p11 = p01 + 1;
-
-                if (left) {
-                    // 左翼镜像后绕序相反
-                    mesh.getFaces().addAll(p00, p00, p11, p11, p10, p10);
-                    mesh.getFaces().addAll(p00, p00, p01, p01, p11, p11);
-                } else {
-                    mesh.getFaces().addAll(p00, p00, p10, p10, p11, p11);
-                    mesh.getFaces().addAll(p00, p00, p11, p11, p01, p01);
-                }
-            }
-        }
-
-        MeshView view = new MeshView(mesh);
-        view.setCullFace(CullFace.NONE);
-        return view;
     }
 }

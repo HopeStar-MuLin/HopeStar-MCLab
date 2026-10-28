@@ -153,6 +153,15 @@ public final class WebUIPage extends StackPane implements DecoratorPage {
                                 + "return document.querySelector('.page.active').id;})()");
                 System.out.println("WEB PAGE -> " + switched);
             }
+
+            // 验收用：-Dhmcl.web.tab=cape 在外观页里再点一下对应标签
+            String tab = System.getProperty("hmcl.web.tab");
+            if (tab != null && !tab.isBlank()) {
+                Object clicked = webView.getEngine().executeScript(
+                        "(function(){var t=document.querySelector('.tab[data-tab=\"" + tab + "\"]');"
+                                + "if(!t) return 'no-tab'; t.click(); return t.textContent;})()");
+                System.out.println("WEB TAB -> " + clicked);
+            }
             PauseTransition delay = new PauseTransition(Duration.millis(4500));
             delay.setOnFinished(event -> {
                 try {

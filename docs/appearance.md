@@ -79,7 +79,7 @@ public void updateSkin(skin, slim, cape, elytraTexture) // 披风与鞘翅贴图
 | 外观页渲染 | 通过（`docs/shot-appearance.png`） |
 | 皮肤库列表 / 选中预览 | 通过 |
 | 3D 人物渲染 | 通过 |
-| **鞘翅几何** | **通过（隔离测试）**：`docs/shot-elytra-test.png` 两片翅膀正常出图 |
+| **鞘翅几何** | **通过**（旧方案已废弃，见第十节）：`docs/shot-elytra-final.png` |
 | 鞘翅在整机预览里的位置/角度 | **未达标**：翅膀是近乎平行于背部的平面，正面/侧面视角下几乎看不到，需要调整张开角与观察角度 |
 | 导入裁剪 / 右键菜单 / 应用上传 | 未验证（需要鼠标交互，截图模式点不到） |
 
@@ -135,3 +135,126 @@ public void updateSkin(skin, slim, cape, elytraTexture) // 披风与鞘翅贴图
 
 验收方式：`-Dhmcl.web.size=960x640` 控制窗口尺寸，`-Dhmcl.web.page=home|appearance|accounts|instances`
 控制落地页，`-Dhmcl.web.shot=<path>` 出图。
+
+---
+
+## 九、披风改为可选（无披风是一等选项）
+
+### 之前的问题
+
+披风列表里只有"有披风"的卡片，没有"不要披风"这个状态。选过披风之后就无法回到不戴的状态，只能删掉那张披风文件——这是设计缺陷，不是交互遗漏。
+
+另外演示数据里塞了几张内置披风，容易让人以为启动器自带披风。
+
+### 现在的行为
+
+- **披风页第一张卡固定是「无披风」**（一个斜杠圆圈图标），任何时候都能选中。
+- 选中后 `state.cape = null`，3D 预览不渲染任何背饰，「披风 / 鞘翅」开关自动置灰。
+- **启动器不预置任何披风**。`AppearanceStore` 不注入披风，只有用户自己导入的才在列表里。
+- **只内置两套原版皮肤**：Steve（宽体）、Alex（纤体），来自 `HMCLCore` 的 `assets/img/skin/`，
+  首次启动复制到 `%HMCL_HOME%/appearance/skins/`，索引里标记 `builtin: true`。
+  内置皮肤不给重命名 / 删除的右键菜单，`AppearanceStore.remove/rename` 也会直接忽略，双重保障。
+- 正版账号的「无披风」不是纯本地状态：点「应用到账号」会发
+  `DELETE api.minecraftservices.com/minecraft/profile/capes/active` 把披风摘掉，
+  这跟选一件披风走 `PUT` 是同一条链路的两个分支。
+
+### 状态字段
+
+`state.cape` 只有两种值：某个披风 id，或 `null`。
+`pendingServerCape` 多一个语义：`null` = 没动过，空串 = 明确不戴，其它 = 目标披风 id。
+
+---
+
+## 十、渲染重做：参考 skinview3d 与原生模型
+
+### 之前为什么"看不到鞘翅"
+
+不是视角问题。第一版 `ElytraModel` 把翅膀做成了**零厚度的曲面片**，张开角只有 22°，
+只要不是正对镜头就只剩一条边，被身体一挡就完全消失。
+
+### 对照了哪些实现
+
+| 项目 | 关键做法 | 我们能用的部分 |
+|---|---|---|
+| **skinview3d**（bs-community，MIT，Three.js） | 鞘翅是 `BoxGeometry(12,22,4)` 实心块，UV 取披风纹理 `(22,0)` 的 10×20 + 厚度 2；左右翼用 `scaleX=-1` 镜像；`updateRightWing()` 同步两翼变换 | 立方体几何、UV 起点、镜像思路 |
+| **原版 `ModelElytra`**（1.9 起未变） | `addBox(-10, 0, 0, 10, 20, 2)`，UV `(22,0)`；静止倾角 `0.2617994`（15°）；有披风时直接用披风贴图渲染 | 精确尺寸与倾角 |
+| **HMCL `SkinCube`**（本项目已有） | 网格会把面片正反各生成一份，天然双面；UV 归一化按 `(w+d)*2 × (h+d)` 计算 | 直接复用，不重写网格代码 |
+
+结论：**鞘翅必须是实体块，不能是面片**。厚度带来的侧面明暗是它「像个东西」的唯一来源。
+
+### 具体改动
+
+**几何**（`ElytraModel` 重写，从 200 行降到 170 行且全部复用 `SkinCube`）
+
+- 每片翼 `10 × 20 × 2`，与原版 `addBox(-10, 0, 0, 10, 20, 2)` 一致
+- UV 归一化 `scaleX = 24/64`、`scaleY = 22/32`，起点按取图方式二选一：
+  - `ELYTRA_REGION`：`startX = 22/64`，原版鞘翅布局
+  - `CAPE_REGION`：`startX = 0`，把披风图案 `(0,0)-(22,22)` 铺到翅膀上
+- 两套网格同时存在，切换只改显隐，不重建网格
+- 外张 15°、后倾 11°，两片翅膀相位差 0.35 rad 做微摆，避免同步得像机械
+
+**贴图规则**（按你定的）
+
+1. 披风文件带独立鞘翅图 → 用 `ELYTRA_REGION`，按原版 `(22,0)` 取图
+2. 没有 → 用 `CAPE_REGION`，把披风图案铺到翅膀上
+3. 正版账号只有服务器下发的披风图，必然走第 2 条（Mojang 不下发鞘翅图）
+
+**光照**（`SkinCanvas`）
+
+原来只有一盏 `AmbientLight(Color.WHITE)`，所有面亮度完全相同——这是"生硬"的主因，
+模型看起来就是一张贴纸。改成：
+
+```java
+AmbientLight ambient = new AmbientLight(Color.gray(0.76));      // 暗面不发黑
+DirectionalLight key     = new DirectionalLight(Color.gray(0.38)); // 朝向不同的面产生梯度
+```
+
+方向光**跟随镜头绕 Y 转动**（`setYaw` 里重算方向向量）。不跟随的话，转到背面时整颗头是纯黑的。
+
+**材质**
+
+`PhongMaterial` 默认白色高光强度 32，皮肤看起来像包了层塑料膜。
+压到 `specularColor = gray(0.08)`、`specularPower = 12`，恢复成 Minecraft 的哑光观感。
+
+**待机微摆**
+
+预览是以 PNG 形式交给页面的（见第六节），静态图不动就等于模型僵住了。
+处理方式：只在**外观页在屏幕上时**启动一个 500ms 的 `Timeline` 重新出图，
+配 0.18Hz 的正弦摆动，2fps 采样足够顺，切走立刻停。
+
+实测日志（已清理）：
+
+```
+[preview] repaint #3  sway=0.184
+[preview] repaint #4  sway=0.669
+[preview] repaint #5  sway=0.999
+[preview] repaint #6  sway=1.098
+[preview] repaint #7  sway=0.943
+[preview] repaint #8  sway=0.566
+```
+
+**视角随标签页切换**
+
+皮肤页看正面，披风页自动转到背面 3/4（`yaw = 318/326`），否则打开披风列表却看不到背上的东西。
+手动拖过之后不再自动转，切标签页时重置。
+
+### 顺手修掉的一个 bug
+
+`appearance()` 用 `account != null ? id : ""` 当状态文件名，而预览用 `selectedAccountId()`
+（无账号时返回 `"none"`）。两处 key 不一致，导致**界面显示「无披风」但预览里戴着披风**。
+统一走 `selectedAccountId()`。
+
+### 新增验收参数
+
+```bash
+-Dhmcl.web.tab=cape        # 外观页里再点一下指定标签（skin/cape）
+-Dhmcl.web.yaw=318          # 强制指定观察角度，用于标定
+```
+
+配合已有的 `-Dhmcl.web.page`、`-Dhmcl.web.size`、`-Dhmcl.web.shot` 可以无人值守出对照图。
+
+### 仍未验证
+
+- 正版账号的披风列表拉取、切换、摘除（需要真实账号）
+- 导入披风时的双图选择（需要鼠标交互）
+- 带独立鞘翅贴图的 `ELYTRA_REGION` 渲染（缺一张真实鞘翅贴图样本，等有正版披风再验）

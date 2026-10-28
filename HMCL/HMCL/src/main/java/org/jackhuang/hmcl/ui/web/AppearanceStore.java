@@ -66,6 +66,8 @@ public final class AppearanceStore {
         String model;
         /// 披风专用：是否带独立鞘翅贴图
         boolean hasElytra;
+        /// 随启动器内置的素材（原版 Steve / Alex），不允许删除
+        boolean builtin;
         long addedAt;
 
         private transient Image image;
@@ -80,6 +82,18 @@ public final class AppearanceStore {
             this.model = model;
             this.hasElytra = hasElytra;
             this.addedAt = addedAt;
+        }
+
+        Asset(String id, String name, String model, boolean builtin) {
+            this.id = id;
+            this.name = name;
+            this.model = model;
+            this.builtin = builtin;
+            this.addedAt = 0L;
+        }
+
+        public boolean isBuiltin() {
+            return builtin;
         }
 
         public String getId() {
@@ -167,6 +181,51 @@ public final class AppearanceStore {
         }
         load(Kind.SKIN, skins);
         load(Kind.CAPE, capes);
+        ensureBuiltinSkins();
+    }
+
+    /// 内置素材：只放原版两套皮肤（Steve 宽体、Alex 纤体），披风一个都不预置。
+    ///
+    /// <p>皮肤取自 {@code HMCLCore} 里已有的资源，首次启动时复制到皮肤目录，
+    /// 这样它们能被正常预览、上传，也不会因为资源包缺失而变成空白。
+    /// 标记为 {@code builtin} 之后不允许删除，避免用户误操作把唯一的默认皮肤删掉。
+    private static final String BUILTIN_STEVE = "builtin-steve";
+    private static final String BUILTIN_ALEX = "builtin-alex";
+
+    private void ensureBuiltinSkins() {
+        installBuiltinSkin(BUILTIN_STEVE, "Steve（宽体）", "default",
+                "/assets/img/skin/wide/steve.png");
+        installBuiltinSkin(BUILTIN_ALEX, "Alex（纤体）", "slim",
+                "/assets/img/skin/slim/alex.png");
+    }
+
+    private void installBuiltinSkin(String id, String name, String model, String resource) {
+        Path target = fileOf(Kind.SKIN, id);
+        Asset existing = find(Kind.SKIN, id);
+
+        if (existing != null && Files.isRegularFile(target)) {
+            return;
+        }
+
+        try (InputStream in = AppearanceStore.class.getResourceAsStream(resource)) {
+            if (in == null) {
+                LOG.warning("Builtin skin resource missing: " + resource);
+                return;
+            }
+            Files.createDirectories(SKIN_DIR);
+            // 先写临时文件再替换，避免上次异常退出留下半张图
+            Path tmp = target.resolveSibling(id + ".png.tmp");
+            Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            LOG.warning("Failed to install builtin skin " + id, e);
+            return;
+        }
+
+        if (existing == null) {
+            skins.add(new Asset(id, name, model, true));
+        }
+        save(Kind.SKIN, skins);
     }
 
     // ==================== 索引读写 ====================
@@ -337,7 +396,8 @@ public final class AppearanceStore {
 
     public void remove(Kind kind, String id) {
         Asset asset = find(kind, id);
-        if (asset == null) {
+        if (asset == null || asset.builtin) {
+            // 内置皮肤不允许删除，界面上也不给入口
             return;
         }
         list(kind).remove(asset);
@@ -354,7 +414,7 @@ public final class AppearanceStore {
 
     public void rename(Kind kind, String id, String name) {
         Asset asset = find(kind, id);
-        if (asset == null || name == null || name.isBlank()) {
+        if (asset == null || asset.builtin || name == null || name.isBlank()) {
             return;
         }
         asset.name = uniqueName(kind, name.trim(), asset);

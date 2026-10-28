@@ -545,7 +545,9 @@ public final class WebBridge {
 
     public String appearance() {
         Account account = Accounts.getSelectedAccount();
-        String accountId = account != null ? account.getAccountID().toString() : "";
+        // 必须和 refreshPreview 用同一个 key（selectedAccountId 在无账号时返回 "none"），
+        // 否则读到的是一份空状态：界面显示「无披风」但预览里其实戴着披风。
+        String accountId = selectedAccountId();
         String kind = accountKind(account);
 
         JsonObject root = new JsonObject();
@@ -562,6 +564,8 @@ public final class WebBridge {
         stateJson.addProperty("model", state.getModel());
         stateJson.addProperty("capeMode", state.getCapeMode());
         root.add("state", stateJson);
+        // 空串 = 用户明确选了「不戴披风」但还没应用；null = 没动过
+        root.addProperty("pendingServerCape", pendingServerCape);
 
         root.addProperty("accountSkin", accountSkinCache != null ? imageToDataUrl(accountSkinCache, 96) : null);
         root.addProperty("accountCape", accountCapeCache != null ? imageToDataUrl(accountCapeCache, 96) : null);
@@ -576,6 +580,7 @@ public final class WebBridge {
             item.addProperty("name", asset.getName());
             item.addProperty("model", asset.getModel());
             item.addProperty("hasElytra", asset.isHasElytra());
+            item.addProperty("builtin", asset.isBuiltin());
             try {
                 item.addProperty("preview", imageToDataUrl(appearance.image(kind, asset), 64));
             } catch (Exception e) {
@@ -613,6 +618,44 @@ public final class WebBridge {
 
     public void hidePreview() {
         // 图片跟随页面，不需要额外隐藏
+    }
+
+    /// 外观页的待机摆动靠「定期重绘一张预览图」实现。
+    ///
+    /// 预览本身是一张 PNG（不是实时画布），所以摆动必须靠定时重新截图才看得见。
+    /// 500ms 一次（2fps）配 0.18Hz 的慢速摆动已经足够顺，再快就只是在烧 CPU。
+    /// 只有外观页在屏幕上时才启动，切走立刻停。
+    private javafx.animation.Timeline idleRepaint;
+
+    public void setPreviewActive(boolean active) {
+        Platform.runLater(() -> {
+            if (!active) {
+                if (idleRepaint != null) {
+                    idleRepaint.stop();
+                }
+                return;
+            }
+            if (idleRepaint == null) {
+                idleRepaint = new javafx.animation.Timeline(
+                        new javafx.animation.KeyFrame(javafx.util.Duration.millis(500),
+                                event -> refreshPreview()));
+                idleRepaint.setCycleCount(javafx.animation.Animation.INDEFINITE);
+            }
+            if (idleRepaint.getStatus() != javafx.animation.Animation.Status.RUNNING) {
+                idleRepaint.play();
+            }
+        });
+    }
+
+    /// 当前外观页停留的标签页。皮肤页看正面，披风页自动转到背面 3/4，
+    /// 否则打开披风列表却看不到背上的东西。
+    private String appearanceTab = "skin";
+
+    public void setAppearanceTab(String tab) {
+        appearanceTab = "cape".equals(tab) ? "cape" : "skin";
+        // 换标签页时把用户手动转过的角度清掉，回到该标签页的推荐视角
+        previewYawTouched = false;
+        Platform.runLater(this::refreshPreview);
     }
 
     /// 拖动预览旋转视角（水平）
@@ -670,8 +713,9 @@ public final class WebBridge {
 
     public void selectSkin(String id) {
         AppearanceStore.State state = stateOfSelectedAccount();
-        state.skin = id;
-        AppearanceStore.Asset asset = appearance.find(AppearanceStore.Kind.SKIN, id);
+        // 空串来自「账号当前皮肤」那张卡，表示回到服务器下发的皮肤
+        state.skin = (id == null || id.isBlank()) ? null : id;
+        AppearanceStore.Asset asset = appearance.find(AppearanceStore.Kind.SKIN, state.skin);
         if (asset != null && asset.getModel() != null) {
             state.model = asset.getModel();
         }
@@ -680,9 +724,12 @@ public final class WebBridge {
         refreshPreview();
     }
 
+    /// 选择披风。传 null 或空串表示「不戴披风」——这是明确的选择，不是"还没选"。
     public void selectCape(String id) {
         AppearanceStore.State state = stateOfSelectedAccount();
-        state.cape = id;
+        state.cape = (id == null || id.isBlank()) ? null : id;
+        // 本地披风和正版服务器披风互斥，选本地就清掉待提交的服务器披风
+        pendingServerCape = null;
         appearance.saveState(selectedAccountId(), state);
         pushAppearance();
         refreshPreview();
@@ -769,9 +816,11 @@ public final class WebBridge {
         }).start();
     }
 
-    /// 正版账号：选中服务器上的某件披风（只改预览，应用时才提交）
+    /// 正版账号：选中服务器上的某件披风（只改预览，应用时才提交）。
+    /// 传空串表示明确不戴披风，应用时会发 DELETE 把当前披风摘掉。
     public void selectServerCape(String capeId) {
-        pendingServerCape = capeId;
+        pendingServerCape = capeId == null ? "" : capeId;
+        pushAppearance();
         refreshPreview();
     }
 
@@ -810,11 +859,18 @@ public final class WebBridge {
 
         Image cape = null;
         Image elytra = null;
+        boolean capeDecided = false;
 
+        // 正版账号：用户点过服务器披风列表之后，pendingServerCape 就是最终决定
+        // （空串 = 明确不戴），这时不再回退到本地披风或账号当前披风
         if (pendingServerCape != null) {
-            cape = serverCapeImages.get(pendingServerCape);
+            capeDecided = true;
+            if (!pendingServerCape.isEmpty()) {
+                cape = serverCapeImages.get(pendingServerCape);
+            }
         }
-        if (cape == null) {
+
+        if (!capeDecided) {
             AppearanceStore.Asset capeAsset = appearance.find(AppearanceStore.Kind.CAPE, state.getCape());
             if (capeAsset != null) {
                 try {
@@ -824,9 +880,10 @@ public final class WebBridge {
                     LOG.warning("Failed to load selected cape", e);
                 }
             }
-        }
-        if (cape == null) {
-            cape = accountCapeCache;
+            // 本地没选，才退回账号自带的披风
+            if (cape == null) {
+                cape = accountCapeCache;
+            }
         }
 
         SkinCanvas canvas = page.getPreviewCanvas();
@@ -834,11 +891,22 @@ public final class WebBridge {
         boolean elytraMode = "elytra".equals(state.getCapeMode());
         canvas.setCapeMode(elytraMode ? SkinCanvas.CapeMode.ELYTRA : SkinCanvas.CapeMode.CAPE);
 
-        // 用户没手动转过视角时，按「有背饰看背面、没背饰看正面」给个默认角度
+        // 皮肤标签看正面；披风标签转到背面 3/4，否则选了披风也看不见。
+        // 没有背饰时一律正面——转过去只会看到后脑勺。
         if (!previewYawTouched) {
-            previewYaw = cape != null ? (elytraMode ? 225 : 205) : 180;
+            boolean wantBack = cape != null && "cape".equals(appearanceTab);
+            previewYaw = wantBack ? (elytraMode ? 318 : 326) : 180;
+        }
+        // 标定用：-Dhmcl.web.yaw=210 强制指定视角，方便一次性出多角度对照图
+        String forcedYaw = System.getProperty("hmcl.web.yaw");
+        if (forcedYaw != null && !forcedYaw.isBlank()) {
+            try {
+                previewYaw = Double.parseDouble(forcedYaw.trim());
+            } catch (NumberFormatException ignored) {
+            }
         }
         canvas.setYaw(previewYaw);
+        canvas.setSwayEnabled(true);
 
         String dataUrl = page.snapshotPreview();
         if (dataUrl != null) {
@@ -891,7 +959,8 @@ public final class WebBridge {
                                 appearance.fileOf(AppearanceStore.Kind.SKIN, skinAsset.getId()));
                     }
                     if (pendingServerCape != null) {
-                        microsoftAccount.setActiveCape(pendingServerCape);
+                        // 空串 = 明确不戴披风，走 DELETE
+                        microsoftAccount.setActiveCape(pendingServerCape.isEmpty() ? null : pendingServerCape);
                     }
                 } catch (Exception e) {
                     throw new RuntimeException(e);

@@ -103,7 +103,34 @@ public class SkinCanvas extends Group {
     public final ElytraModel elytra = new ElytraModel();
     public final Group elytraGroup = new Group(elytra);
 
+    /// 待机微摆：披风与鞘翅一起做极小幅度的呼吸式摆动，避免看起来像静止的模型
+    private boolean swayEnabled;
+    private double swayPhase;
+    private long swayLastNanos;
+    private final javafx.animation.AnimationTimer swayTimer = new javafx.animation.AnimationTimer() {
+        @Override
+        public void handle(long now) {
+            if (swayLastNanos == 0) {
+                swayLastNanos = now;
+                return;
+            }
+            // 用真实时间推进相位，掉帧时摆动速度也不会变
+            double elapsed = (now - swayLastNanos) / 1_000_000_000.0;
+            swayLastNanos = now;
+            swayPhase += elapsed * 1.15;
+
+            elytra.setSway(swayPhase);
+            // 外层已经固定了 10° 后倾，这里只叠加摆动分量，否则会变成 20°
+            capeGroup.getXRotate().setAngle(Math.sin(swayPhase * 0.85) * 1.1);
+        }
+    };
+
     protected PerspectiveCamera camera = new PerspectiveCamera(true);
+
+    /// 主方向光。相机绕 Y 转的时候它也要跟着转，否则看到背面时整张脸全黑——
+    /// 这是第一版截图里后脑勺是纯黑块的原因。
+    private final DirectionalLight keyLight = new DirectionalLight(Color.gray(0.38));
+    private javafx.geometry.Point3D keyLightBase = new javafx.geometry.Point3D(0.3, 0.55, -0.78);
 
     protected Rotate xRotate = new Rotate(0, Rotate.X_AXIS);
     protected Rotate yRotate = new Rotate(180, Rotate.Y_AXIS);
@@ -142,8 +169,12 @@ public class SkinCanvas extends Group {
                 this.skin = SkinHelper.enlarge(this.skin, multiple, multiple);
             updateSkinModel(isSlim, cape != null);
             bindMaterial(root);
-            // bindMaterial 会把皮肤的材质刷到所有 Shape3D 上，这里再把鞘翅改回背饰贴图
-            Image wingTexture = elytraTexture != null ? elytraTexture : cape;
+            // 披风文件自带鞘翅图就按原版 (22,0) 布局取图；否则把披风图案 (0,0) 铺到翅膀上
+            boolean dedicatedElytra = elytraTexture != null && elytraTexture != cape;
+            elytra.setWingTexture(dedicatedElytra
+                    ? ElytraModel.WingTexture.ELYTRA_REGION
+                    : ElytraModel.WingTexture.CAPE_REGION);
+            Image wingTexture = dedicatedElytra ? elytraTexture : cape;
             if (wingTexture != null) {
                 elytra.setTexture(wingTexture);
             }
@@ -172,15 +203,44 @@ public class SkinCanvas extends Group {
         applyCapeModeVisibility();
     }
 
-    /// 切换背饰形态：披风 / 鞘翅
-    /// 设置水平观察角度（度）。默认 180 是正面，往 180+ 方向转可以看到背后的披风/鞘翅。
+    /// 设置水平观察角度（度）。180 是正面，绕到 0 / 360 附近可以看到背后的披风或鞘翅。
     public void setYaw(double degree) {
         yRotate.setAngle(degree);
+        updateKeyLight();
     }
 
+    /// 让主光跟着相机绕 Y 转动，保证「镜头看得到的面」永远是被照亮的那个面。
+    private void updateKeyLight() {
+        double radians = Math.toRadians(yRotate.getAngle() - 180);
+        double cos = Math.cos(radians), sin = Math.sin(radians);
+        javafx.geometry.Point3D base = keyLightBase;
+        double x = base.getX() * cos + base.getZ() * sin;
+        double z = -base.getX() * sin + base.getZ() * cos;
+        keyLight.setDirection(new javafx.geometry.Point3D(x, base.getY(), z));
+    }
+
+    /// 切换背饰形态：披风 / 鞘翅
     public void setCapeMode(@Nullable CapeMode mode) {
         this.capeMode = mode == null ? CapeMode.CAPE : mode;
         applyCapeModeVisibility();
+    }
+
+    /// 鞘翅贴图取法：披风文件自带鞘翅图就按原版布局，否则把披风图案铺上去
+    public void setElytraTextureMode(ElytraModel.WingTexture mode) {
+        elytra.setWingTexture(mode);
+    }
+
+    /// 启动/停止待机微摆。预览页打开时开着，关掉页面时停掉，避免后台空转。
+    public void setSwayEnabled(boolean enabled) {
+        if (enabled == swayEnabled) {
+            return;
+        }
+        swayEnabled = enabled;
+        if (enabled) {
+            swayTimer.start();
+        } else {
+            swayTimer.stop();
+        }
     }
 
     public CapeMode getCapeMode() {
@@ -204,6 +264,10 @@ public class SkinCanvas extends Group {
     protected Material createMaterial(final Image image) {
         PhongMaterial material = new PhongMaterial();
         material.setDiffuseMap(image);
+        // Minecraft 的皮肤是纯漫反射的，默认 PhongMaterial 的白色高光会让模型像包了层塑料膜。
+        // 压到接近黑、并把高光半径放大，表面就变成哑光，方块之间才有「同一个物质」的观感。
+        material.setSpecularColor(Color.gray(0.08));
+        material.setSpecularPower(12);
         return material;
     }
 
@@ -215,7 +279,9 @@ public class SkinCanvas extends Group {
             else if (node instanceof SkinMultipleCubes)
                 ((SkinMultipleCubes) node).updateSkin(skin);
             else if (node instanceof Group)
-                bindMaterial((Group) node);
+                // 鞘翅用自己的贴图，不能被皮肤的材质覆盖
+                if (node != elytraGroup)
+                    bindMaterial((Group) node);
     }
 
     protected Group createPlayerModel() {
@@ -235,9 +301,13 @@ public class SkinCanvas extends Group {
 
         capeGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(10, Rotate.X_AXIS));
 
-        elytraGroup.setTranslateY(+(capeCube.getHeight() - bodyOuter.getHeight()) / 2);
-        elytraGroup.setTranslateZ(-(bodyInside.getDepth() + bodyOuter.getDepth()) / 2);
-        elytraGroup.getTransforms().addAll(new Rotate(180, Rotate.Y_AXIS), new Rotate(10, Rotate.X_AXIS));
+        // 鞘翅的挂点与披风不同：披风是整块布挂在肩上（方块中心对齐组原点），
+        // 鞘翅是两片翼从肩胛向下垂（模型里已经把内上角挪到组原点），所以组的 Y 要顶到身体上沿。
+        elytraGroup.setTranslateY(-bodyOuter.getHeight() / 2);
+        // 贴着背但留出半个翼厚，避免和身体侧面互相穿插
+        elytraGroup.setTranslateZ(-(bodyInside.getDepth() / 2 + 1.2));
+        // 只做朝向翻转；倾角由 ElytraModel 内部按翼片单独控制，这样摆动时两片可以不同步
+        elytraGroup.getTransforms().add(new Rotate(180, Rotate.Y_AXIS));
 
         root.getTransforms().addAll(xRotate);
 
@@ -259,8 +329,14 @@ public class SkinCanvas extends Group {
     protected SubScene createSubScene() {
         Group group = new Group();
 
-        AmbientLight light = new AmbientLight(Color.WHITE);
-        group.getChildren().add(light);
+        // 只有一盏满亮度环境光时，所有面亮度完全相同，模型看起来就是一张贴纸。
+        // 拆成「高基础亮度 + 一盏方向光」：基础光保证暗面不发黑，方向光让朝向不同的面产生梯度。
+        AmbientLight ambient = new AmbientLight(Color.gray(0.76));
+        group.getChildren().add(ambient);
+
+        // 光从观察者右上前方来（JavaFX 的 direction 是「光的行进方向」，所以指向 -z）
+        keyLight.setDirection(keyLightBase);
+        group.getChildren().add(keyLight);
 
         group.getChildren().add(createPlayerModel());
         group.getTransforms().add(zRotate);
