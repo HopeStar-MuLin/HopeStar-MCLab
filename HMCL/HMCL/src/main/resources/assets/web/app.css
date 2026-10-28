@@ -475,3 +475,255 @@ body[data-theme="dark"] .icon-sun { display: block; }
   line-height: 1.7;
   max-width: 520px;
 }
+
+/* ================= 外观页 v2 =================
+   设计参考：Mojang 官方账号管理的披风选择页（卡片 = 缩略图槽 + 单选行）、
+   Apple HIG 的分组留白（8 的倍数间距）、Material 3 的 tonal surface 层级。
+   目标：缩小到 960×640 不挤，放大到 1440 不空。 */
+
+.appearance {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+}
+
+/* 左栏宽度跟着窗口走，但夹在 260–340 之间，保证预览不至于太小或太占位 */
+.ap-left {
+  width: clamp(260px, 25vw, 340px);
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 3D 预览：4:5 竖长方形，正好容纳站立姿态 */
+.preview-slot {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 10px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+
+.preview-slot img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  display: block;
+  cursor: grab;
+  -webkit-user-drag: none;
+}
+.preview-slot img:active { cursor: grabbing; }
+
+.ap-right {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 标签条：底部细线 + 右侧操作按钮 */
+.ap-right .tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 资产网格：卡片固定最小宽度，多余空间平均分配，不出现「挤在左边」 */
+.asset-grid {
+  display: grid;
+  /* 上限 168px：宽窗口下卡片不会被拉成大方块，少量卡片也不会散得太开 */
+  grid-template-columns: repeat(auto-fill, minmax(118px, 168px));
+  justify-content: start;
+  gap: 12px;
+  margin-top: 12px;
+  align-content: start;
+  max-height: none;
+  overflow: visible;
+}
+
+.asset-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color .16s ease, transform .12s ease, box-shadow .16s ease;
+}
+.asset-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(16, 24, 40, .10);
+}
+.asset-card.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset, 0 6px 16px rgba(16, 24, 40, .10);
+}
+
+/* 缩略图槽：固定高度，图片按原比例居中，放大用最近邻保持像素感 */
+.asset-well {
+  position: relative;
+  height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 棋盘格底纹：浅色披风（比如纯白/淡青）放在纯浅底上几乎看不见，
+     同时这层格纹也顺带表达了「贴图有透明区域」这件事 */
+  background-color: var(--surface-2);
+  background-image:
+    linear-gradient(45deg, rgba(16, 24, 40, .045) 25%, transparent 25%, transparent 75%, rgba(16, 24, 40, .045) 75%),
+    linear-gradient(45deg, rgba(16, 24, 40, .045) 25%, transparent 25%, transparent 75%, rgba(16, 24, 40, .045) 75%);
+  background-size: 14px 14px;
+  background-position: 0 0, 7px 7px;
+}
+body[data-theme="dark"] .asset-well {
+  background-image:
+    linear-gradient(45deg, rgba(255, 255, 255, .06) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, .06) 75%),
+    linear-gradient(45deg, rgba(255, 255, 255, .06) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, .06) 75%);
+}
+/* 注意：这里必须用固定的 height，不能用 max-height。
+   缩略图本身只有 10×16 / 16×32 像素，max-height 只会限制上限、不会放大，
+   结果是披风图按原尺寸 10 像素宽显示，肉眼几乎看不见。 */
+.asset-well img {
+  height: 88px;
+  max-height: 88px;
+  max-width: calc(100% - 24px);
+  width: auto;
+  object-fit: contain;
+  image-rendering: pixelated;
+  display: block;
+  /* 浅色贴图靠这圈投影和棋盘格区分开边界 */
+  filter: drop-shadow(0 1px 3px rgba(16, 24, 40, .22));
+}
+.asset-well img.asset-placeholder {
+  width: 46px; height: 74px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #5b7cfa, #8f6bff);
+  opacity: .55;
+}
+
+/* 无披风：虚线空框，和官方页一致 */
+.asset-empty-frame {
+  width: 54px; height: 84px;
+  border: 2px dashed var(--muted);
+  border-radius: 8px;
+  opacity: .5;
+}
+
+/* 底部单选行 */
+.asset-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  min-height: 38px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border);
+}
+.asset-radio {
+  width: 14px; height: 14px;
+  margin-top: 2px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  box-sizing: border-box;
+  transition: border-color .16s ease, background .16s ease;
+}
+.asset-card.current .asset-radio {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 3.5px, transparent 3.6px);
+}
+.asset-card .asset-name {
+  font-size: 12.5px;
+  margin: 0;
+  color: var(--text);
+  /* 允许折成两行，长名字不会只剩半截 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+/* 徽章压在缩略图右上角，不再挤占名称行 */
+.asset-card .asset-badges {
+  position: absolute;
+  top: 8px; right: 8px;
+  display: flex; gap: 4px;
+  margin: 0;
+}
+.asset-card .asset-badges .tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .82);
+  color: var(--muted);
+  backdrop-filter: blur(4px);
+}
+body[data-theme="dark"] .asset-card .asset-badges .tag {
+  background: rgba(20, 22, 28, .72);
+}
+
+/* 提示文案：限制行宽，避免长句横跨整屏 */
+.ap-right .muted.small {
+  margin-top: 14px;
+  line-height: 1.7;
+  max-width: 620px;
+}
+
+/* --------- 自适应 --------- */
+
+/* 窄窗口：预览与资产上下排列，预览降到 220 宽 */
+@media (max-width: 900px) {
+  .appearance { flex-direction: column; gap: 16px; }
+  .ap-left {
+    width: 100%;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .ap-left .preview-slot { width: 200px; flex: 0 0 200px; }
+  .ap-left .ap-toggles,
+  .ap-left .btn,
+  .ap-left .muted { flex: 1 1 auto; }
+  .ap-left > :not(.preview-slot) { max-width: 260px; }
+}
+
+/* 矮窗口：压缩缩略图槽，卡片不至于把内容顶出屏幕 */
+@media (max-height: 720px) {
+  .preview-slot { max-height: 300px; aspect-ratio: auto; height: 300px; }
+  .asset-well { height: 92px; }
+  .asset-well img { max-height: 74px; }
+  .asset-empty-frame { width: 46px; height: 72px; }
+}
+
+/* 宽窗口：把资产网格排成 3–4 列，避免一张卡横跨半屏 */
+@media (min-width: 1280px) {
+  .asset-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 172px)); }
+}
+
+/* 资产区标题：小标题 + 数量，给卡片一个视觉归属 */
+.asset-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.asset-head .asset-count {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+}

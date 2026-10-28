@@ -585,23 +585,35 @@
 
   function assetCard(opts) {
     var card = el('div', 'asset-card' + (opts.current ? ' current' : ''));
-    if (opts.glyph) {
+
+    // 缩略图槽：固定高度，图片按原比例等比放进去（皮肤 16:32，披风 10:16）
+    var well = el('div', 'asset-well');
+    if (opts.emptyFrame) {
+      well.appendChild(el('div', 'asset-empty-frame'));
+    } else if (opts.glyph) {
       var glyph = el('div', 'asset-glyph');
       glyph.innerHTML = opts.glyph;
-      card.appendChild(glyph);
+      well.appendChild(glyph);
     } else {
       var img = document.createElement('img');
       if (opts.preview) { img.src = opts.preview; }
-      else { img.style.background = 'linear-gradient(135deg,#5b7cfa,#8f6bff)'; }
-      card.appendChild(img);
+      else { img.className = 'asset-placeholder'; }
+      well.appendChild(img);
     }
-    card.appendChild(el('div', 'asset-name', opts.name || '未命名'));
-
     if (opts.badges && opts.badges.length) {
       var badges = el('div', 'asset-badges');
       opts.badges.forEach(function (b) { badges.appendChild(el('span', 'tag', b)); });
-      card.appendChild(badges);
+      well.appendChild(badges);
     }
+    card.appendChild(well);
+
+    // 底部一行：单选圆点 + 名称，和官方账号管理页的披风列表同一个信息结构
+    var foot = el('div', 'asset-foot');
+    foot.appendChild(el('span', 'asset-radio'));
+    foot.appendChild(el('span', 'asset-name', opts.name || '未命名'));
+    card.appendChild(foot);
+
+    if (opts.id) { card.setAttribute('data-asset-id', opts.id); }
 
     card.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -641,6 +653,17 @@
     grid.innerHTML = '';
     if (!apData) { return; }
 
+    // 资产区标题：给出「现在在看什么、有多少」，避免一堆卡片悬空在页面上
+    var headLabel = document.getElementById('asset-head-label');
+    var headCount = document.getElementById('asset-head-count');
+    if (headLabel) {
+      headLabel.textContent = apTab === 'skin' ? '皮肤库' : '披风';
+    }
+    if (headCount) {
+      var n = apTab === 'skin' ? (apData.skins || []).length : (apData.capes || []).length;
+      headCount.textContent = n > 0 ? n + ' 项' : '';
+    }
+
     var kind = apData.kind;
     var readOnly = !!apData.readOnly;
     var state = apData.state || {};
@@ -658,6 +681,7 @@
       }
       skins.forEach(function (s) {
         grid.appendChild(assetCard({
+          id: s.id,
           name: s.name,
           preview: s.preview,
           badges: [s.model === 'slim' ? '纤体' : '宽体'].concat(s.builtin ? ['内置'] : []),
@@ -683,7 +707,6 @@
       var capes = apData.capes || [];
 
       // 「不戴披风」不是「还没选」——它是一等选项，永远排在第一位
-      var noCapeGlyph = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".45"/><path d="M6 18 18 6" stroke="currentColor" stroke-width="1.6" opacity=".45"/></svg>';
 
       if (kind === 'microsoft') {
         var list = serverCapes || [];
@@ -694,7 +717,7 @@
 
         grid.appendChild(assetCard({
           name: '无披风',
-          glyph: noCapeGlyph,
+          emptyFrame: true,
           current: noneSelected,
           onSelect: function () { call('selectServerCape', ''); }
         }));
@@ -708,8 +731,9 @@
           list.forEach(function (c) {
             var current = pending === null ? !!c.active : pending === c.id;
             grid.appendChild(assetCard({
+              id: c.id,
               name: c.name,
-              preview: null,
+              preview: c.preview || null,
               badges: c.active ? ['已装备'] : [],
               current: current,
               onSelect: function () { call('selectServerCape', c.id); }
@@ -730,13 +754,14 @@
       } else {
         grid.appendChild(assetCard({
           name: '无披风',
-          glyph: noCapeGlyph,
+          emptyFrame: true,
           current: !state.cape,
           onSelect: function () { call('selectCape', ''); }
         }));
 
         capes.forEach(function (c) {
           grid.appendChild(assetCard({
+            id: c.id,
             name: c.name,
             preview: c.preview,
             badges: c.hasElytra ? ['含鞘翅'] : [],
@@ -884,6 +909,23 @@
     onPreview: function (dataUrl) {
       var img = document.getElementById('ap-preview');
       if (img && dataUrl) { img.src = dataUrl; }
+    },
+    onCapePreview: function (id, dataUrl) {
+      if (!serverCapes || !dataUrl) { return; }
+      var hit = null;
+      for (var i = 0; i < serverCapes.length; i++) {
+        if (serverCapes[i].id === id) { serverCapes[i].preview = dataUrl; hit = serverCapes[i]; break; }
+      }
+      if (!hit) { return; }
+      // 只换这一张卡的图，不重建整个网格，避免列表在眼前闪一下
+      var cards = document.querySelectorAll('#asset-grid .asset-card');
+      for (var k = 0; k < cards.length; k++) {
+        if (cards[k].getAttribute('data-asset-id') === id) {
+          var img = cards[k].querySelector('.asset-well img');
+          if (img) { img.src = dataUrl; img.classList.remove('asset-placeholder'); }
+          break;
+        }
+      }
     },
     onServerCapes: function (json) {
       try { serverCapes = JSON.parse(json || '[]'); } catch (e) { serverCapes = []; }

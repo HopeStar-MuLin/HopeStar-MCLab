@@ -567,8 +567,10 @@ public final class WebBridge {
         // 空串 = 用户明确选了「不戴披风」但还没应用；null = 没动过
         root.addProperty("pendingServerCape", pendingServerCape);
 
-        root.addProperty("accountSkin", accountSkinCache != null ? imageToDataUrl(accountSkinCache, 96) : null);
-        root.addProperty("accountCape", accountCapeCache != null ? imageToDataUrl(accountCapeCache, 96) : null);
+        root.addProperty("accountSkin", accountSkinCache != null
+                ? AppearanceThumbnails.skinFront(accountSkinCache, accountSkinSlim) : null);
+        root.addProperty("accountCape", accountCapeCache != null
+                ? AppearanceThumbnails.capeFront(accountCapeCache) : null);
         return JsonUtils.GSON.toJson(root);
     }
 
@@ -582,7 +584,12 @@ public final class WebBridge {
             item.addProperty("hasElytra", asset.isHasElytra());
             item.addProperty("builtin", asset.isBuiltin());
             try {
-                item.addProperty("preview", imageToDataUrl(appearance.image(kind, asset), 64));
+                Image texture = appearance.image(kind, asset);
+                // 皮肤拼成站立小人、披风取正面那一块，跟官方账号管理页的列表一致；
+                // 直接把 64×64 展开图当缩略图只会是一团看不懂的色块
+                item.addProperty("preview", kind == AppearanceStore.Kind.SKIN
+                        ? AppearanceThumbnails.skinFront(texture, "slim".equals(asset.getModel()))
+                        : AppearanceThumbnails.capeFront(texture));
             } catch (Exception e) {
                 item.addProperty("preview", (String) null);
             }
@@ -803,6 +810,15 @@ public final class WebBridge {
                                 .thenAccept(image -> {
                                     if (image != null) {
                                         serverCapeImages.put(cape.id, image);
+                                        // 卡片上的平面缩略图是异步到手的，单独推一条增量，
+                                        // 免得为了张图把整个列表重建一遍
+                                        String preview = AppearanceThumbnails.capeFront(image);
+                                        if (preview != null) {
+                                            Platform.runLater(() -> execute(
+                                                    "window.__hmcl && window.__hmcl.onCapePreview("
+                                                            + JsonUtils.GSON.toJson(cape.id) + ","
+                                                            + JsonUtils.GSON.toJson(preview) + ")"));
+                                        }
                                         Platform.runLater(this::refreshPreview);
                                     }
                                 });
