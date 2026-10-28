@@ -1,0 +1,44 @@
+# ==== 构建产物 ====
+build/
+out/
+bin/
+.gradle/
+*.class
+
+# HMCL 打包出来的 exe 目录（tools/pack_exe.py 生成，可重建）
+build-win/
+runtime/
+
+# dist 下的二进制可以重建，只保留说明文件
+dist/*.jar
+dist/*.zip
+dist/HMCL/
+
+# ==== 依赖二进制 ====
+# webui-shell 的 JavaFX jar 由 env/fetch-deps.sh 重新下载
+webui-shell/lib/*.jar
+
+# 便携 JDK 与 Gradle 缓存不入库（体积大，可用 env/setup-env.sh 重建）
+env/jdk/
+env/gradle-home/
+
+# ==== 运行时数据 ====
+.hmcl/
+HMCL/.hmcl/
+.cache/
+logs/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# ==== 编辑器 / 系统 ====
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ==== 临时 ====
+*.tmp
+*.bak
+*.orig

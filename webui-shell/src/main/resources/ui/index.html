@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Launcher</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body data-theme="light">
+
+<div class="app">
+
+  <!-- 侧栏 -->
+  <aside class="sidebar">
+    <div class="brand" data-drag>
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <strong>Prism</strong>
+        <span>Launcher</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-page="home">
+        <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>主页</span>
+      </button>
+      <button class="nav-item" data-page="instances">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 11h16v4H4zM4 17h10v4H4z"/></svg>
+        <span>实例</span>
+      </button>
+      <button class="nav-item" data-page="download">
+        <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 17.8 6.1 10.9l1.4-1.4L11 13zM5 19h14v2H5z"/></svg>
+        <span>下载</span>
+      </button>
+      <button class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-.2 1.7 1.7 1.3-1.5 2.6-2-.8a7 7 0 0 1-1.5.9l-.3 2.1h-3l-.3-2.1a7 7 0 0 1-1.5-.9l-2 .8-1.5-2.6 1.7-1.3L3 12l.2-1.7L1.5 9 3 6.4l2 .8a7 7 0 0 1 1.5-.9L6.8 4h3l.3 2.1a7 7 0 0 1 1.5.9l2-.8L15 8.8l-1.7 1.3z"/></svg>
+        <span>设置</span>
+      </button>
+    </nav>
+
+    <div class="account-chip">
+      <div class="avatar" id="avatar">S</div>
+      <div class="account-meta">
+        <strong id="account-name">Steve</strong>
+        <span id="account-type">Microsoft</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <header class="titlebar" data-drag>
+      <h1 id="page-title">主页</h1>
+      <div class="titlebar-actions">
+        <button class="win-btn" id="btn-theme" title="切换主题">
+          <svg viewBox="0 0 24 24" class="icon-moon"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+          <svg viewBox="0 0 24 24" class="icon-sun"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 2h2v3h-2zm0 17h2v3h-2zM2 11h3v2H2zm17 0h3v2h-3zM4.2 5.6 5.6 4.2l2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
+        </button>
+        <button class="win-btn" id="btn-min">—</button>
+        <button class="win-btn" id="btn-max">□</button>
+        <button class="win-btn danger" id="btn-close">✕</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 主页 -->
+      <section class="page active" id="page-home">
+        <div class="hero">
+          <div class="hero-info">
+            <span class="hero-tag">当前实例</span>
+            <h2 id="hero-title">1.21.1</h2>
+            <p id="hero-sub">Fabric 0.16.5 · Java 21 · 上次启动 今天 14:02</p>
+            <div class="hero-actions">
+              <button class="btn primary" id="btn-launch">启动游戏</button>
+              <button class="btn ghost">打开目录</button>
+            </div>
+          </div>
+          <div class="hero-art" id="hero-art"></div>
+        </div>
+
+        <div class="section-head">
+          <h3>实例</h3>
+          <button class="link">查看全部</button>
+        </div>
+        <div class="grid" id="version-grid"></div>
+
+        <div class="section-head">
+          <h3>动态</h3>
+        </div>
+        <div class="list" id="news-list"></div>
+      </section>
+
+      <!-- 实例 -->
+      <section class="page" id="page-instances">
+        <div class="section-head"><h3>全部实例</h3><button class="btn ghost small">新建实例</button></div>
+        <div class="table" id="instance-table"></div>
+      </section>
+
+      <!-- 下载 -->
+      <section class="page" id="page-download">
+        <div class="section-head"><h3>下载</h3></div>
+        <div class="grid three">
+          <div class="card pad"><h4>游戏版本</h4><p class="muted">正式版 / 快照 / 远古版本</p><button class="btn ghost small">浏览</button></div>
+          <div class="card pad"><h4>模组加载器</h4><p class="muted">Forge / NeoForge / Fabric / Quilt</p><button class="btn ghost small">浏览</button></div>
+          <div class="card pad"><h4>整合包</h4><p class="muted">Modrinth / CurseForge</p><button class="btn ghost small">浏览</button></div>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="page" id="page-settings">
+        <div class="section-head"><h3>外观</h3></div>
+        <div class="card pad list-rows">
+          <div class="row"><span>主题</span><span class="muted">跟随按钮切换</span></div>
+          <div class="row"><span>圆角</span><span class="muted">16px</span></div>
+        </div>
+
+        <div class="section-head"><h3>WebView 能力自检</h3></div>
+        <div class="card pad">
+          <p class="muted small" id="ua"></p>
+          <div class="diag" id="diag"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <div class="resize-grip" id="grip"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
