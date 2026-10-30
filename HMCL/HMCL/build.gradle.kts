@@ -38,7 +38,12 @@ val curseForgeApiKey = System.getenv("CURSEFORGE_API_KEY") ?: ""
 val launcherExe = System.getenv("HMCL_LAUNCHER_EXE") ?: ""
 
 val buildNumber = System.getenv("BUILD_NUMBER")?.toInt()
-if (buildNumber != null) {
+// 直接指定版本号（发布第一个版本时用 0.1-dev 这种写法）。
+// 不设就回到原来的规则：CI 用 BUILD_NUMBER，本地是 3.17.SNAPSHOT。
+val versionOverride = System.getenv("VERSION_OVERRIDE")?.takeIf { it.isNotBlank() }
+if (versionOverride != null) {
+    version = versionOverride
+} else if (buildNumber != null) {
     version = if (JenkinsUtils.IS_ON_CI && versionType == "dev") {
         "$versionRoot.0.$buildNumber"
     } else {

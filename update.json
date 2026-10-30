@@ -1,6 +1,6 @@
 {
-  "version": "3.17",
-  "notes": "首个公开版本。\n· 实例管理：每个版本独立目录，模组 / 存档 / 设置互不干扰\n· 版本安装：原版与 Forge、NeoForge、Fabric、Quilt、Cleanroom、OptiFine\n· 内容下载：模组、整合包、资源包、光影、世界\n· 外观：宽体 / 纤体、披风、鞘翅、盔甲预览，实时 3D\n· 账号：离线登录、外置认证（微软正版登录审核中，暂未开放）",
+  "version": "0.1-dev",
+  "notes": "首个公开版本（开发版）。\n· 实例管理：每个版本独立目录，模组 / 存档 / 设置互不干扰\n· 版本安装：原版与 Forge、NeoForge、Fabric、Quilt、Cleanroom、OptiFine\n· 内容下载：模组、整合包、资源包、光影、世界\n· 外观：宽体 / 纤体、披风、鞘翅、盔甲预览，实时 3D\n· 账号：离线登录、外置认证（微软正版登录审核中，暂未开放）\n· 设置 → 关于：可以检查更新并一键热更新",
   "jar": "update/HopeStar-MCLab.jar",
-  "jarSize": 13740122
+  "jarSize": 13740105
 }
