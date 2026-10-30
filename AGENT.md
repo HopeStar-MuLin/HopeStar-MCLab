@@ -75,6 +75,22 @@ python tools/pack-debug.py --sign
 
 签名细节见 `docs/signing.md`；换自己的微软登录 client id 见 `docs/microsoft-login.md`。
 
+### 检查更新与热更新
+
+- **清单**：仓库根的 `update.json`（`version` / `notes` / `jar` / `jarSize`）。
+  客户端读 `https://cdn.jsdelivr.net/gh/<repo>@latest/update.json` —— `@latest` 自动指向
+  最新 tag，所以发版只需打 tag，URL 不用改。
+- **载荷**：`update/HopeStar-MCLab.jar`，只替换 `data/` 下的核心（13MB，在 jsDelivr
+  单文件 20MB 上限内）。
+- **为什么不用 api.github.com**：国内网络实测连不上（curl 返回 000），jsDelivr 能直连；
+  GitHub API 只作兜底。
+- **应用**：写一个 `apply-update.ps1`，等本进程退出后覆盖 jar 再 `Start-Process` 重启。
+  运行中的 jar / exe 是锁着的，绕不过这一步。
+- **发版**：`python tools/release.py 318 --notes "..."` —— 用 `BUILD_NUMBER=318` 构建，
+  写 update.json、提交、打 tag。jar 内版本必须等于 update.json 的 version
+  （脚本会校验），否则用户更新完还会看到「有新版本」。
+
+
 **验证方式**（debug 构建才开 CDP 端口）：
 
 ```bash
