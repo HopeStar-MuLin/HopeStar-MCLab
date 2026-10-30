@@ -294,8 +294,18 @@ public final class Controllers {
 
         StyleSheets.init(mainScene);
 
-        // 实验性 Web 界面：-Dhmcl.ui.web=true 时用 WebView 页面替换原主页
-        if (Boolean.getBoolean("hmcl.ui.web")) {
+        // Tauri 壳模式：-Dhmcl.web.http=true 时不画 JavaFX 窗口，
+        // 只把 WebBridge 挂到本机 HTTP 上，窗口和渲染交给壳
+        if (Boolean.getBoolean("hmcl.web.http")) {
+            LOG.info("Tauri shell mode, starting HTTP bridge");
+            try {
+                int port = org.jackhuang.hmcl.ui.web.WebUIShell.start();
+                LOG.info("HTTP bridge ready on port " + port);
+            } catch (Throwable e) {
+                LOG.log(System.Logger.Level.ERROR, "Failed to start HTTP bridge", e);
+            }
+        } else if (Boolean.getBoolean("hmcl.ui.web")) {
+            // 实验性 Web 界面：-Dhmcl.ui.web=true 时用 WebView 页面替换原主页
             LOG.info("Web UI enabled, switching main page to WebView");
             // 顶栏交给页面自己画，窗口按钮与拖拽由 WebBridge 接管
             decorator.setTitleBarVisible(false);

@@ -1,0 +1,27 @@
+[package]
+name = "hmcl-shell"
+version = "0.1.0"
+description = "HMCL 启动器的 Tauri 外壳"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+[profile.dev]
+# 依赖用 -O 编，自己代码保持 debug：首次编译慢一点，之后增量快，
+# 而且 tauri/wry 这类库不开优化的话运行时会明显卡
+[profile.dev.package."*"]
+opt-level = 2

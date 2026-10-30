@@ -314,6 +314,11 @@ public class DownloadProvider {
     }
 
     /// Returns unmodifiable candidate URLs for an asset's relative object location, in attempt order.
+    ///
+    /// <p>这里**不**挂 BMCLAPI 的 `/assets/` 镜像：实测它 302 到
+    /// `bmclapi23.sakura.sld.tw:443`，该地址 TLS 握手直接失败（curl exit 35），
+    /// 挂在候选第一位只会让每个资源先白等一轮再回退官方。资源仍然直连官方，
+    /// 慢的时候靠界面上的计时器说明「还在跑」。
     public DownloadCandidates getAssetObjectCandidates(AssetObject assetObject) {
         return getDownloadCandidates("https://resources.download.minecraft.net/" + assetObject.getLocation());
     }

@@ -30,6 +30,6 @@ cd HMCL
 cd ..
 
 mkdir -p dist
-cp -f HMCL/HMCL/build/libs/HMCL-*.jar dist/HMCL.jar
-echo "[ok] 产物: dist/HMCL.jar"
-python tools/verify.py --jar dist/HMCL.jar
+cp -f HMCL/HMCL/build/libs/HMCL-*.jar dist/HopeStar-MCLab.jar
+echo "[ok] 产物: dist/HopeStar-MCLab.jar"
+python tools/verify.py --jar dist/HopeStar-MCLab.jar

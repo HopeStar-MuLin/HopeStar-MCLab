@@ -130,7 +130,9 @@ public class OAuth {
         long interval = TimeUnit.MILLISECONDS.convert(deviceTokenResponse.interval, TimeUnit.SECONDS);
 
         while (true) {
-            Thread.sleep(Math.max(interval, 1));
+            // 一次睡满 interval（微软给 5~15 秒）的话，用户点「取消」要等十几秒才有反应。
+            // 拆成 250ms 一片，每片之间查一次取消标志——代价只是一次 volatile 读。
+            sleepCancellable(options, Math.max(interval, 1));
 
             // We stop waiting if user does not respond our authentication request in 15 minutes.
             long estimatedTime = System.nanoTime() - startTime;
@@ -163,6 +165,29 @@ public class OAuth {
             options.callback.loginCompletedDeviceCode();
 
             return new Result(tokenResponse.accessToken, tokenResponse.refreshToken);
+        }
+    }
+
+    /**
+     * 可被取消的 sleep。
+     *
+     * 不在循环里直接 {@code Thread.sleep} 是因为取消标志只有在两次 sleep 之间才能检查到；
+     * 分片之后最长延迟就是一片的长度。
+     */
+    private static void sleepCancellable(Options options, long millis)
+            throws InterruptedException, OperationCancelledException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
+        while (true) {
+            if (options.callback.isCancelled()) {
+                throw new OperationCancelledException();
+            }
+            long left = deadline - System.nanoTime();
+            if (left <= 0) {
+                return;
+            }
+            // 加 1 是为了避免 toMillis 把不足 1ms 的余量截成 0 —— sleep(0) 会立即返回，
+            // 那就变成一个空转的忙循环了
+            Thread.sleep(Math.min(250L, TimeUnit.NANOSECONDS.toMillis(left) + 1));
         }
     }
 
@@ -271,6 +296,16 @@ public class OAuth {
         void grantDeviceCode(String userCode, String verificationURI);
 
         void loginCompletedDeviceCode();
+
+        /**
+         * 当前这次登录是否已被用户取消。
+         *
+         * 默认返回 false：上游的其它实现（HMCL 的 MicrosoftAccountLoginPane 等）不需要取消能力，
+         * 加默认实现可以让它们一行都不用改。壳模式在 OAuthServer.Factory 里覆盖它。
+         */
+        default boolean isCancelled() {
+            return false;
+        }
 
         /**
          * Open browser

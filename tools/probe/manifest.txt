@@ -1,0 +1,2 @@
+Agent-Class: Probe
+Can-Redefine-Classes: false

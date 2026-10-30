@@ -23,6 +23,7 @@ import org.jackhuang.hmcl.auth.yggdrasil.TextureModel;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.skin.NormalizedSkin;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -122,6 +123,15 @@ public final class AppearanceStore {
         String cape;
         String model;
 
+        /// 宽体/纤体是不是用户**手动**选的。
+        ///
+        /// 之前只靠 `model` 有没有值来判断「用户选过没有」，可 `model` 也会被
+        /// 皮肤自带的推荐值填上，于是第一次选皮肤之后它永远有值——
+        /// 换来换去模型就再也不跟着皮肤走了（选 Alex 显示宽体，再切回又对）。
+        /// 用 Boolean 而不是 boolean：老配置里没这个字段，读到 null 才能区分
+        /// 「没有这个字段」和「明确是 false」。
+        Boolean modelTouched;
+
         public State() {
         }
 
@@ -141,6 +151,10 @@ public final class AppearanceStore {
 
         public String getModel() {
             return model;
+        }
+
+        public Boolean getModelTouched() {
+            return modelTouched;
         }
     }
 
@@ -187,9 +201,9 @@ public final class AppearanceStore {
     private static final String BUILTIN_ALEX = "builtin-alex";
 
     private void ensureBuiltinSkins() {
-        installBuiltinSkin(BUILTIN_STEVE, "Steve（宽体）", "default",
+        installBuiltinSkin(BUILTIN_STEVE, "Steve", "default",
                 "/assets/img/skin/wide/steve.png");
-        installBuiltinSkin(BUILTIN_ALEX, "Alex（纤体）", "slim",
+        installBuiltinSkin(BUILTIN_ALEX, "Alex", "slim",
                 "/assets/img/skin/slim/alex.png");
     }
 
@@ -198,6 +212,13 @@ public final class AppearanceStore {
         Asset existing = find(Kind.SKIN, id);
 
         if (existing != null && Files.isRegularFile(target)) {
+            // 内置素材的显示名会随版本调整（原来带「（宽体）」后缀），
+            // 这里跟着同步，否则老用户升级之后还看到旧名字。
+            if (!name.equals(existing.name) || !model.equals(existing.model)) {
+                existing.name = name;
+                existing.model = model;
+                save(Kind.SKIN, skins);
+            }
             return;
         }
 
@@ -332,6 +353,13 @@ public final class AppearanceStore {
     // ==================== 导入 / 删除 ====================
 
     public Asset importSkin(Path file) throws IOException {
+        return importSkin(file, null);
+    }
+
+    /// 导入皮肤。{@code preferredName} 用来指定显示名——壳模式的文件是前端
+    /// 读成 dataUrl 再落到临时文件的，临时文件名不适合出现在界面上，
+    /// 所以由前端把用户选的文件名传进来。传 null 则退回文件名。
+    public Asset importSkin(Path file, @Nullable String preferredName) throws IOException {
         Image image = readImage(file);
         if (!isSkinSize(image)) {
             throw new IOException("不是合法的皮肤文件（需要 64 的倍数，且高为宽或宽的一半）");
@@ -353,7 +381,8 @@ public final class AppearanceStore {
             slim = false;
         }
 
-        Asset asset = new Asset(id, uniqueName(Kind.SKIN, baseName(file)), slim ? TextureModel.SLIM.modelName : TextureModel.WIDE.modelName,
+        String name = (preferredName == null || preferredName.isBlank()) ? baseName(file) : preferredName;
+        Asset asset = new Asset(id, uniqueName(Kind.SKIN, name), slim ? TextureModel.SLIM.modelName : TextureModel.WIDE.modelName,
                 false, System.currentTimeMillis());
         asset.image = image;
         skins.add(0, asset);
@@ -365,6 +394,11 @@ public final class AppearanceStore {
      * 导入披风。{@code elytraFile} 可为 null——为 null 时渲染阶段直接用披风贴图套鞘翅。
      */
     public Asset importCape(Path file, Path elytraFile) throws IOException {
+        return importCape(file, elytraFile, null);
+    }
+
+    /// 导入披风。{@code preferredName} 同 {@link #importSkin(Path, String)}。
+    public Asset importCape(Path file, Path elytraFile, @Nullable String preferredName) throws IOException {
         Image image = readImage(file);
         String id = sha1(file);
         Asset existing = find(Kind.CAPE, id);
@@ -381,7 +415,8 @@ public final class AppearanceStore {
             hasElytra = true;
         }
 
-        Asset asset = new Asset(id, uniqueName(Kind.CAPE, baseName(file)), null, hasElytra, System.currentTimeMillis());
+        String name = (preferredName == null || preferredName.isBlank()) ? baseName(file) : preferredName;
+        Asset asset = new Asset(id, uniqueName(Kind.CAPE, name), null, hasElytra, System.currentTimeMillis());
         asset.image = image;
         capes.add(0, asset);
         save(Kind.CAPE, capes);
@@ -417,8 +452,16 @@ public final class AppearanceStore {
 
     // ==================== 账号状态 ====================
 
+    /// 账号 id 在接口层带 `account:` 这类前缀（前端要区分渠道），
+    /// 但冒号在 Windows 文件名里非法，直接拼会抛 InvalidPathException。
+    /// 换成下划线：仍然可读、不同渠道不会撞名、也不会和 uuid 本身混淆。
+    private static Path stateFile(String accountId) {
+        String safe = accountId == null ? "none" : accountId.replaceAll("[^A-Za-z0-9._-]", "_");
+        return STATE_DIR.resolve(safe + ".json");
+    }
+
     public State stateOf(String accountId) {
-        Path file = STATE_DIR.resolve(accountId + ".json");
+        Path file = stateFile(accountId);
         if (!Files.isRegularFile(file)) {
             return new State(null, null, null);
         }
@@ -427,6 +470,9 @@ public final class AppearanceStore {
             if (state == null) {
                 return new State(null, null, null);
             }
+            // 老配置没有 modelTouched 字段，一律当「没手动选过」，让模型重新跟随皮肤。
+            // 反过来的保守做法（有 model 就算手动选过）会把这个 bug 原样保留：
+            // 那些 model 值本来就是皮肤自动填进去的，不是用户的意图。
             return state;
         } catch (Exception e) {
             LOG.warning("Failed to read appearance state for " + accountId, e);
@@ -434,10 +480,27 @@ public final class AppearanceStore {
         }
     }
 
+    /// 把一份外观状态从一个账号挪到另一个账号。
+    ///
+    /// 离线账号改名会换 UUID，而外观状态是按 accountID 存的文件；
+    /// 不搬的话用户改完名字会发现皮肤和披风都没了。
+    public void moveState(String fromId, String toId) {
+        if (fromId == null || toId == null || fromId.equals(toId)) {
+            return;
+        }
+        State state = stateOf(fromId);
+        saveState(toId, state);
+        try {
+            Files.deleteIfExists(stateFile(fromId));
+        } catch (IOException e) {
+            LOG.warning("Failed to remove old appearance state for " + fromId, e);
+        }
+    }
+
     public void saveState(String accountId, State state) {
         try {
             Files.createDirectories(STATE_DIR);
-            FileUtils.saveSafely(STATE_DIR.resolve(accountId + ".json"), JsonUtils.GSON.toJson(state));
+            FileUtils.saveSafely(stateFile(accountId), JsonUtils.GSON.toJson(state));
         } catch (IOException e) {
             LOG.warning("Failed to save appearance state for " + accountId, e);
         }

@@ -61,6 +61,8 @@ dependencies {
     implementation(project(":HMCLCore"))
     implementation(project(":HMCLBoot"))
     implementation("libs:JFoenix")
+    // 标题栏品牌补丁要重写 class 常量池，直接用本地这份 ASM（flatDir 从 HMCL/lib 取）
+    implementation("libs:asm-9.10.1")
     implementation(libs.jwebp)
     implementation(libs.fxsvgimage)
     implementation(libs.java.info)
@@ -159,6 +161,12 @@ tasks.compileJava {
 val createPropertiesFile = tasks.register<WriteProperties>("createPropertiesFile") {
     destinationFile.set(layout.buildDirectory.file("hmcl.properties"))
     encoding = "UTF-8"
+
+    // 这几个值来自环境变量，不声明成 input 的话改了它们任务还是 up-to-date，
+    // 打出来的 jar 里仍是旧 client id / 旧 CurseForge key（踩过：换了 id 构建 13 秒跑完，
+    // 包里还是上游的值）。声明之后改环境变量就会重跑这个任务。
+    inputs.property("microsoftAuthId", microsoftAuthId)
+    inputs.property("curseForgeApiKey", curseForgeApiKey)
 
     property("hmcl.version", project.version.toString())
     property("hmcl.add-opens", addOpens.joinToString(" "))

@@ -179,6 +179,26 @@ public final class OAuthServer extends NanoHTTPD implements OAuth.Session {
         public final EventManager<OpenBrowserEvent> onOpenBrowserAuthorizationCode = new EventManager<>();
         public final EventManager<OpenBrowserEvent> onOpenBrowserDevice = new EventManager<>();
 
+        /// 用户主动取消的标记。设备码轮询每 250ms 查一次。
+        ///
+        /// 用 volatile 而不是 AtomicBoolean：这里只有「置位」和「读取」两种操作，
+        /// 没有 compareAndSet 的需求。取消是单向的，要重新开始必须显式 resetCancel()，
+        /// 否则上一次的取消会把下一次登录也一起掐掉。
+        private volatile boolean cancelled = false;
+
+        public void cancel() {
+            cancelled = true;
+        }
+
+        public void resetCancel() {
+            cancelled = false;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
+
         @Override
         public OAuth.Session startServer() throws IOException, AuthenticationException {
             if (StringUtils.isBlank(getClientId())) {

@@ -61,8 +61,14 @@ public final class EntryPoint {
                 initIcon();
         }
 
-        checkJavaFX();
-        verifyJavaFX();
+        // 壳模式（Tauri）下 JavaFX 由 --module-path 提供，不需要自动下载补丁。
+        // 那条路会去镜像拉 jar 做 SHA-1 校验，镜像不对就报错弹窗，对壳来说是纯噪音。
+        if (Boolean.getBoolean("hmcl.web.http")) {
+            LOG.info("Shell mode: JavaFX supplied via --module-path, skipping self-patch");
+        } else {
+            checkJavaFX();
+            verifyJavaFX();
+        }
         addEnableNativeAccess();
         enableUnsafeMemoryAccess();
 

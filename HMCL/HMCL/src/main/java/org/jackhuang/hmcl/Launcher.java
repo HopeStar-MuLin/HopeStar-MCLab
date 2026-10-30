@@ -142,9 +142,18 @@ public final class Launcher extends Application {
                 Platform.setImplicitExit(false);
                 Controllers.initialize(primaryStage);
 
-                UpdateChecker.init();
+                // 壳模式下不查 HMCL 官方更新：我们的发行版不在它的更新通道里，
+                // 检查必然失败（RemoteVersion 解析不出 version），只会在日志里留一条
+                // WARNING，且没有任何用户价值。更新由我们自己的 Release 分发。
+                if (!Boolean.getBoolean("hmcl.web.http")) {
+                    UpdateChecker.init();
+                }
 
-                primaryStage.show();
+                // Tauri 壳模式下窗口归壳管，JavaFX 这一侧不出窗口，
+                // 只保留 Toolkit 供 SkinCanvas 之类的离屏渲染使用
+                if (!Boolean.getBoolean("hmcl.web.http")) {
+                    primaryStage.show();
+                }
             });
         } catch (Throwable e) {
             CRASH_REPORTER.uncaughtException(Thread.currentThread(), e);

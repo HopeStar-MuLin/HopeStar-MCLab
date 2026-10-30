@@ -34,8 +34,10 @@ public final class Metadata {
     private Metadata() {
     }
 
-    public static final String NAME = "HMCL";
-    public static final String FULL_NAME = "Hello Minecraft! Launcher";
+    /// 启动器名。整个界面、窗口标题、日志、传给游戏的 ${launcher_name} 都用它。
+    /// 上游原名 HMCL / Hello Minecraft! Launcher，这里是分支版本自己的名字。
+    public static final String NAME = "HopeStar-MCLab";
+    public static final String FULL_NAME = "HopeStar-MCLab";
     public static final String VERSION = System.getProperty("hmcl.version.override", JarUtils.getAttribute("hmcl.version", "@develop@"));
 
     /// Explicit Application User Model ID used for Windows taskbar grouping and pinning.

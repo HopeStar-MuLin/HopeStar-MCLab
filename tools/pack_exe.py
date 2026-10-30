@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把 dist/HMCL.jar 打成一个双击即用的 Windows 目录 + 分发包。
+"""把 dist/HopeStar-MCLab.jar 打成一个双击即用的 Windows 目录 + 分发包。
 
 产物:
     dist/HMCL/HMCL.exe     双击启动，内置 JRE，不需要装 Java
@@ -24,7 +24,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-JAR = ROOT / "dist" / "HMCL.jar"
+JAR = ROOT / "dist" / "HopeStar-MCLab.jar"
 APP = ROOT / "build" / "app"
 JLINK = ROOT / "build" / "jlink"
 ICON = ROOT / "build" / "icon.ico"

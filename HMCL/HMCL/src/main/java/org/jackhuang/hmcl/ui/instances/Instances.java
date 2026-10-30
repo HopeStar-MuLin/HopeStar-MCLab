@@ -360,6 +360,11 @@ public final class Instances {
             return;
         }
 
+        // 主菜单左下角的启动器名只能改客户端（启动参数改不动，实测）。
+        // 放在这里是因为所有启动方式（普通启动 / 测试启动 / 进存档）最终都走这个方法。
+        // 保留 HMCL 原生显示（这行本来就是上游的行为，也说明这个启动器来自 HMCL）
+        // org.jackhuang.hmcl.ui.web.TitleBrand.patchQuietly(gameInstance.getInstanceJarFile());
+
         ensureSelectedAccount(account -> {
             LauncherHelper launcherHelper = new LauncherHelper(gameInstance, account);
             for (Consumer<LauncherHelper> injecter : injecters) {

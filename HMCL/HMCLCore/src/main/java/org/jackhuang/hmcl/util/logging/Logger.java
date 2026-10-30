@@ -141,7 +141,28 @@ public final class Logger {
         }
     }
 
+    /// 退出清理只允许跑一次：shutdown hook 和主动调用会各来一次。
+    private final java.util.concurrent.atomic.AtomicBoolean exitDone =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /// 主动退出清理（落盘 → 裁剪旧日志 → 压缩）。
+    ///
+    /// <p>正常情况下 JVM 的 shutdown hook 会做这件事，但壳模式的退出路径是
+    /// `POST /api/quit` → `System.exit(0)`，后面还跟着一个几秒后 `halt(0)` 的兜底；
+    /// 压缩大日志经常跑不完就被 halt 打断，结果是日志没压缩、旧日志没清理。
+    /// 所以退出前显式调一次，让它跟兜底赛跑时至少先跑完。
+    public void exitAndFlush() {
+        runExit();
+    }
+
     private void onExit() {
+        runExit();
+    }
+
+    private void runExit() {
+        if (!exitDone.compareAndSet(false, true)) {
+            return;
+        }
         shutdown();
         try {
             loggerThread.join();

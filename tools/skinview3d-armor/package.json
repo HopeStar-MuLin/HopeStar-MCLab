@@ -1,0 +1,15 @@
+{
+  "name": "skinview3d-armor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "skinview3d 3.4.2 + 盔甲层（本地补丁构建，产出前端用的 IIFE bundle）",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.23.1",
+    "skinview-utils": "^0.7.1",
+    "three": "^0.156.1"
+  }
+}

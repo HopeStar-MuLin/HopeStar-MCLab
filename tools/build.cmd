@@ -44,8 +44,8 @@ if not "%RC%"=="0" (
 
 rem --- collect artifact ---
 if not exist dist mkdir dist
-copy /y "HMCL\HMCL\build\libs\HMCL-*.jar" "dist\HMCL.jar" >nul
+copy /y "HMCL\HMCL\build\libs\HMCL-*.jar" "dist\HopeStar-MCLab.jar" >nul
 echo.
-echo [ok] Artifact: dist\HMCL.jar
-python tools\verify.py --jar dist\HMCL.jar
+echo [ok] Artifact: dist\HopeStar-MCLab.jar
+python tools\verify.py --jar dist\HopeStar-MCLab.jar
 endlocal

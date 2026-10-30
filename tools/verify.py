@@ -2,8 +2,8 @@
 """构建后自检：产物里有没有地域限制、下载源通不通。
 
 用法:
-    python tools/verify.py --jar dist/HMCL.jar
-    python tools/verify.py --jar dist/HMCL.jar --offline   # 跳过联网检查
+    python tools/verify.py --jar dist/HopeStar-MCLab.jar
+    python tools/verify.py --jar dist/HopeStar-MCLab.jar --offline   # 跳过联网检查
 """
 
 from __future__ import annotations
@@ -131,7 +131,7 @@ def check_curseforge(jar: Path) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--jar", default="dist/HMCL.jar")
+    ap.add_argument("--jar", default="dist/HopeStar-MCLab.jar")
     ap.add_argument("--offline", action="store_true")
     args = ap.parse_args()
 

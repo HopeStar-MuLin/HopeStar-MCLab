@@ -255,6 +255,10 @@ public final class LauncherHelper {
                 })
                 .thenComposeAsync(() -> logIn(account).withStage("launch.state.logging_in"))
                 .thenComposeAsync(authInfo -> Task.supplyAsync(() -> {
+                    // 主菜单那行「Minecraft xxx/HMCL（已修改）」里的启动器名只能改客户端，
+                    // 参数改不动（实测）。放在这里而不是 getLaunchOptions 里，是因为
+                    // 那条路径在某些启动方式下不会走到。
+                    org.jackhuang.hmcl.ui.web.TitleBrand.patchQuietly(gameInstance.getInstanceJarFile());
                     LaunchOptions.Builder launchOptionsBuilder = gameInstance.getLaunchOptions(
                             context.javaRuntime,
                             context.javaExecutable,

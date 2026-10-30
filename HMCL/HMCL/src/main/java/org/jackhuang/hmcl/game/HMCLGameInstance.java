@@ -577,6 +577,13 @@ public class HMCLGameInstance extends DefaultGameInstance {
         boolean autoMemory = vs.getInheritable(GameSettings::autoMemoryProperty);
         GameVersionNumber gameVersionNumber = getVersion();
 
+        // 主菜单那行「Minecraft 1.21.1/HMCL（已修改）」里的 HMCL 与 --versionType / --brand 都无关
+        // （四组对照 + 官方纯净 jar 实测都不变），只能改客户端 class。
+        // 现在走「纯净模式」：把那段抹成空，游戏里只留 Minecraft 1.21.1。
+        // 想显示自己的品牌，把 TitleBrand.BRAND 改成 " " + Metadata.NAME 即可。
+        // 保留 HMCL 原生显示
+        // org.jackhuang.hmcl.ui.web.TitleBrand.patchQuietly(getInstanceJarFile());
+
         @Nullable Integer maxMemory;
         if (autoMemory) {
             maxMemory = noJVMOptions
@@ -593,7 +600,7 @@ public class HMCLGameInstance extends DefaultGameInstance {
                 .setGameDir(gameDir)
                 .setJava(javaRuntime)
                 .setJavaExecutable(javaExecutable)
-                .setVersionType(Metadata.TITLE)
+                .setVersionType(Metadata.NAME)
                 .setVersionName(getId().id())
                 .setProfileName(Metadata.TITLE)
                 .setGameArguments(StringUtils.tokenize(vs.getInheritable(GameSettings::gameArgumentsProperty)))

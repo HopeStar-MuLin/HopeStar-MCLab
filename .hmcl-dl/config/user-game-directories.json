@@ -1,9 +1,0 @@
-{
-  "$schema": "https://schemas.glavo.site/hmcl/game-directories/1.0.0",
-  "directories": [
-    {
-      "id": "game-directory:f3eafde8-506e-5a77-bc88-f24b4728dfb2",
-      "path": "C:\\Users\\Admin1\\AppData\\Roaming\\.minecraft"
-    }
-  ]
-}

@@ -8,9 +8,9 @@ if not exist "%JAVA_HOME%\bin\javaw.exe" (
     echo [x] No JDK found. Set JAVA_HOME first.
     exit /b 1
 )
-if not exist "dist\HMCL.jar" (
-    echo [x] Not built yet. Run tools\build.cmd first.
+if not exist "dist\HopeStar-MCLab.jar" (
+    echo [x] Not built yet. Run build.sh first.
     exit /b 1
 )
-start "" "%JAVA_HOME%\bin\javaw.exe" -jar "dist\HMCL.jar"
+start "" "%JAVA_HOME%\bin\javaw.exe" -jar "dist\HopeStar-MCLab.jar"
 endlocal

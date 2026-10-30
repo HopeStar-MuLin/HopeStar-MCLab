@@ -48,3 +48,54 @@ Thumbs.db
 .hmcl-test/
 .hmcl-fresh/
 .minecraft/
+
+# ==== Tauri 壳 ====
+shell/src-tauri/target/
+shell/src-tauri/gen/schemas/
+shell/node_modules/
+
+# Rust 工具链（和 env/jdk 一样，可用 env/setup-env.sh 重建）
+env/cargo/
+env/rustup/
+env/rutrustup/
+
+# 打包出来的调试包（可重建，正式产物走 Release 附件）
+dist-package/
+
+# 上游凭据（tools/official_keys.py 生成，绝不能提交）
+.cache/keys.env
+.cache/keys.local.env
+.cache/keys.cmd
+keys.env
+
+# 启动器运行态（会被 launcher 改写，不入库）
+.hmcl-dl/
+
+# docs/ 只在本地留档：截图含账号/皮肤等个人信息，不进公开仓库
+docs/
+
+# shell/web 是 HMCL 资源目录的镜像（由 npm run sync-web 生成）
+shell/web/
+
+# ==== skinview3d 本地补丁构建（tools/skinview3d-armor）====
+# 依赖和产物都能重建，源码在 src/ 里；真正用的是 assets/web/vendor 里那份
+tools/skinview3d-armor/node_modules/
+tools/skinview3d-armor/dist/
+tools/skinview3d-armor/package-lock.json
+
+# ==== 本地参考源码 / 探针数据（体积大，且不是本仓库的代码）====
+Word/
+tools/chromium-probe/
+tools/vendor-tmp/
+tools/blessing-skin-server-master/
+tools/bs.zip
+env/rustup-init.exe
+
+# 依赖缓存（shell 与 tools/skinview3d-armor 都靠 npm i 重建）
+node_modules/
+
+# 本机会话数据（含本机路径与聊天记录）
+.workbuddy/
+
+# 启动器运行态数据（dist 下只留构建产物）
+dist/data/

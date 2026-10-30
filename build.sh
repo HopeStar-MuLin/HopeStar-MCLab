@@ -15,6 +15,6 @@ fi
 ./gradlew :HMCL:shadowJar -x test --offline --console=plain
 
 JAR="$(ls HMCL/build/libs/HMCL-*.jar | head -1)"
-cp "$JAR" ../dist/HMCL.jar
-echo "[build] $JAR -> dist/HMCL.jar"
-ls -la ../dist/HMCL.jar
+cp "$JAR" ../dist/HopeStar-MCLab.jar
+echo "[build] $JAR -> dist/HopeStar-MCLab.jar"
+ls -la ../dist/HopeStar-MCLab.jar
