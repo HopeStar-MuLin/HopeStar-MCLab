@@ -793,6 +793,15 @@ public final class WebBridge {
     ///
     /// 另一条 AUTHORIZATION_CODE 流程要起一个本机回调服务、还要弹浏览器窗口，
     /// 壳里做不了；设备码只要能显示一串码和网址就行，正好适合自绘 UI。
+    /// 这个构建能不能用微软正版登录（有没有内置 client_id）。
+    ///
+    /// <p>发行版在 Mojang 审核通过前不发 client_id，前端据此把入口置灰，
+    /// 免得用户点了才看到一句失败提示。
+    public boolean isMicrosoftAuthAvailable() {
+        String id = Accounts.OAUTH_CALLBACK.getClientId();
+        return id != null && !id.isEmpty();
+    }
+
     public void loginMicrosoft() {
         // 快照构建没有内置 OAuth client_id（HMCL 在打包时才注入），
         // 没有它微软那头的设备码请求会直接 400。先在这里拦住，给一句人话，
@@ -800,7 +809,7 @@ public final class WebBridge {
         if (Accounts.OAUTH_CALLBACK.getClientId() == null
                 || Accounts.OAUTH_CALLBACK.getClientId().isEmpty()) {
             pushLogin("microsoft", false,
-                    "这个构建没有内置微软登录凭据（快照版限制），暂时只能离线登录或外置认证登录");
+                    "本版暂未开放微软正版登录，请使用离线登录或外置认证登录");
             return;
         }
 

@@ -566,6 +566,9 @@ body[data-theme="dark"] .hero .btn.ghost { border-color: rgba(255, 255, 255, .22
 }
 .login-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-2); }
 .login-card strong { font-size: 14px; }
+/* 不可用的入口（发行版没带微软 client id 时）：置灰但保留可见，让用户知道有这功能 */
+.login-card.disabled { opacity: .55; cursor: not-allowed; }
+.login-card.disabled:hover { border-color: var(--border); transform: none; box-shadow: none; }
 .login-card span { font-size: 12px; color: var(--muted); }
 
 .account-list { display: flex; flex-direction: column; gap: var(--sp-2); }

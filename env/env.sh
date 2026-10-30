@@ -57,6 +57,13 @@ if [ -f "$MCLAB_ROOT/.cache/keys.local.env" ]; then
     echo "[env] 已加载本地覆盖 .cache/keys.local.env"
 fi
 
+# 发行构建用：MCLAB_DISABLE_MSAUTH=1 时清空 client id。
+# Mojang 审核通过前，带 id 的包只会让用户卡在 Xbox Live 那步，不如先把入口关掉。
+if [ "${MCLAB_DISABLE_MSAUTH:-0}" = "1" ]; then
+    MICROSOFT_AUTH_ID=""
+    echo "[env] 已禁用微软正版登录（MCLAB_DISABLE_MSAUTH=1）"
+fi
+
 [ -n "${MICROSOFT_AUTH_ID:-}" ] && export MICROSOFT_AUTH_ID
 [ -n "${CURSEFORGE_API_KEY:-}" ] && export CURSEFORGE_API_KEY
 true

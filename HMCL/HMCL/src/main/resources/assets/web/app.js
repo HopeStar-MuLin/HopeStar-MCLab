@@ -1135,8 +1135,15 @@
   /// 微软登录是否还在跑。设备码流程背后是一个最长 15 分钟的轮询，
   /// 用户关掉弹窗就得把它掐掉，否则后台一直转、还可能悄悄登进去一个账号。
   var msLoginActive = false;
+  /// 这个构建有没有微软登录的 client id。null = 还没问过后端。
+  /// 发行版在 Mojang 审核期不带 id，前端据此把入口置灰。
+  var msAuthAvailable = null;
 
   function openLogin(kind) {
+    if (kind === 'microsoft' && msAuthAvailable === false) {
+      toast('本版暂未开放微软正版登录，请使用离线登录或外置认证');
+      return;
+    }
     loginFlow = kind;
     if (kind === 'offline') {
       document.getElementById('lo-name').value =
@@ -1279,6 +1286,21 @@
         openLogin(this.getAttribute('data-login'));
       });
     }
+
+    // 没有内置 client id 的构建（发行版在 Mojang 审核期就是这种）把微软入口置灰，
+    // 别让用户点了才看到失败提示
+    apiCall('isMicrosoftAuthAvailable').then(function (raw) {
+      var v = asJson(raw);
+      msAuthAvailable = (v === true || v === 'true' || raw === true || raw === 'true');
+      if (msAuthAvailable) { return; }
+      var card = document.querySelector('[data-login="microsoft"]');
+      if (!card) { return; }
+      card.classList.add('disabled');
+      card.setAttribute('aria-disabled', 'true');
+      card.title = 'Mojang 审核通过后开放';
+      var sub = card.querySelector('span:last-child');
+      if (sub) { sub.textContent = '暂未开放，请用离线或外置认证'; }
+    }).catch(function () { /* 问不到就按可用处理，不挡用户 */ });
 
     var bindClose = function (id) {
       var b = document.getElementById(id);
