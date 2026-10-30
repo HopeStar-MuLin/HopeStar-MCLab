@@ -64,7 +64,7 @@
 
 ## 下载和安装
 
-1. 到右边的 **Releases**，下最新的 `HopeStar-MCLab-*.zip`
+1. 到 [Releases](https://github.com/HopeStar-MuLin/HopeStar-MCLab/releases) 下最新的 `HopeStar-MCLab-*.zip`
 2. 解压到任意文件夹 —— 别放 `C:\Program Files`，那里要管理员权限
 3. 双击 `HopeStar-MCLab.exe`
 
