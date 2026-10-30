@@ -327,6 +327,18 @@ mtime，而改一个已有文件的内容不会更新目录的 mtime，于是 `c
 
 `.cache/keys.env` 与 `.cache/keys.local.env` 都被 `.gitignore` 忽略，`env/env.sh` 里只保留
 **读取逻辑**，不含任何值。
+
+**Azure 应用侧的两个必做项**（少一个，设备码流程就报错）：
+
+- `signInAudience` = `PersonalMicrosoftAccount`（Minecraft 只认个人账户）
+- `isFallbackPublicClient` = `true`（对应「允许公共客户端流」）
+
+第二条门户界面上**不一定显示**——2026-10 实测本项目这个应用，平台配了、账户类型也对，
+「身份验证」页最底部就是没有「高级设置」这一块。**直接去「清单」改这个字段**，保存即生效。
+症状：`AADSTS70002: The provided client is not supported for this feature. The client
+application must be marked as 'mobile.'`。
+改完用 `python tools/check-azure-app.py <client_id>` 验证，返回 `user_code` 就是通了。
+详细步骤见 `docs/microsoft-login.md`（本地，未入库）。
 没有这个文件时构建照常，只是正版登录与 CurseForge 源不可用——这是刻意的降级，不要为了"能跑"把值写死回去。
 
 ### 提交前自查
