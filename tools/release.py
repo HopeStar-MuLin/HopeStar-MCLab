@@ -22,6 +22,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -37,6 +38,17 @@ def run(cmd: list[str], env: dict | None = None) -> None:
     result = subprocess.run(cmd, cwd=ROOT, env=env)
     if result.returncode != 0:
         raise SystemExit(f"命令失败（{result.returncode}）：{' '.join(cmd)}")
+
+
+def git_remote_slug() -> str:
+    """从 origin 的 URL 里取 owner/repo。"""
+    url = subprocess.run(["git", "config", "--get", "remote.origin.url"],
+                         cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    url = url.removesuffix(".git")
+    if "github.com" not in url:
+        raise RuntimeError("origin 不是 GitHub 地址：" + url)
+    parts = url.split("github.com")[-1].lstrip(":/").split("/")
+    return f"{parts[0]}/{parts[1]}"
 
 
 def jar_version(jar: Path) -> str:
@@ -101,6 +113,17 @@ def main() -> int:
     run(["git", "-c", "core.quotepath=false", "commit", "-m",
          f"chore(release): v{version}\n\n{notes}".strip()])
     run(["git", "tag", "-a", f"v{version}", "-m", f"v{version}"])
+
+    # 清 jsDelivr 缓存。不清的话客户端读到的还是上一版清单，
+    # 会出现「检查更新拿到旧版本号、下载旧 jar」这种反向升级。
+    try:
+        url = git_remote_slug()
+        for ref in ("@latest", "@main"):
+            purge = f"https://purge.jsdelivr.net/gh/{url}{ref}/update.json"
+            urllib.request.urlopen(purge, timeout=15).read()
+            print(f"[ok] 已刷新 CDN 缓存：{ref}/update.json")
+    except Exception as e:
+        print(f"[!] 刷新 CDN 缓存失败（{e}），过几分钟再手动访问一次 purge.jsdelivr.net")
 
     print()
     print("接下来两步：")
