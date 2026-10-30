@@ -185,7 +185,38 @@ pub fn spawn() -> Result<Core, String> {
         layout.root.display()
     );
 
+    // 发行版不能弹黑窗：GUI 程序里用 java.exe 起子进程会新建一个控制台窗口，
+    // 用户看到的就是「双击启动器先蹦出一屏日志」。优先换同目录的 javaw.exe
+    // （同一条代码，GUI 子系统入口，不建控制台）。
+    #[cfg(windows)]
+    let java = {
+        let javaw = java.with_file_name("javaw.exe");
+        if javaw.is_file() { javaw } else { java }
+    };
+
     let mut cmd = Command::new(&java);
+
+    // 壳是 GUI 程序，没有控制台可继承；日志改成落文件，
+    // 出问题时让用户把 data/logs/core.log 发过来就行。
+    let core_log = {
+        let dir = layout.data.join("logs");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::File::create(dir.join("core.log")).ok()
+    };
+    let (core_out, core_err) = match core_log {
+        Some(f) => (
+            Stdio::from(f.try_clone().expect("clone core log")),
+            Stdio::from(f),
+        ),
+        None => (Stdio::null(), Stdio::null()),
+    };
+
+    // 双保险：万一没有 javaw（极端精简的运行时），也不让它建控制台
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
 
     // 便携模式：把「用户级」数据也收进同一个目录。
     // 账号、皮肤、皮肤站列表默认落在 %APPDATA%\.hmcl（HMCL_USER_HOME），
@@ -219,8 +250,8 @@ pub fn spawn() -> Result<Core, String> {
         .arg(&jar)
         // CWD 决定 `.minecraft` 落在哪儿：根目录（exe 同级），不是 data 里
         .current_dir(&layout.root)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(core_out)
+        .stderr(core_err)
         .spawn()
         .map_err(|e| format!("无法启动 Java 核心（{}）: {}", java.display(), e))?;
 
