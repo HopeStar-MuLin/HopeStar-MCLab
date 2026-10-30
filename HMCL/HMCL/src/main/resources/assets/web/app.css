@@ -1011,6 +1011,18 @@ body[data-theme="dark"] .login-card[data-login="authlib"] .login-ico { color: #4
 }
 .credit-link:hover { border-bottom-color: var(--accent); }
 
+/* 关于页的更新面板：版本对比、更新说明、下载进度 */
+.update-card { display: flex; flex-direction: column; gap: 10px; }
+.update-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.update-head strong { font-size: 13.5px; }
+.update-notes {
+  margin: 0; max-height: 180px; overflow-y: auto;
+  white-space: pre-wrap; line-height: 1.6; word-break: break-word;
+}
+.update-bar { height: 6px; }
+.update-bar .mem-seg { width: 0; transition: width .2s ease; }
+.update-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
 /* 下载页：入口卡统一高度，按钮压到底部对齐 */
 .dl-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); min-height: 168px; }
 .dl-card .dl-head { display: flex; align-items: center; gap: 10px; }

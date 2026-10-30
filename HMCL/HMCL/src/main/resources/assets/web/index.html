@@ -1070,9 +1070,31 @@
         <section class="settings-group" id="set-about">
           <h4>关于</h4>
           <div class="card">
-            <div class="kv"><span class="k">版本</span><span class="v" id="about-version"></span></div>
+            <div class="kv">
+              <span class="k">版本</span>
+              <span class="v">
+                <span id="about-version"></span>
+                <button class="btn ghost small" id="check-update">检查更新</button>
+              </span>
+            </div>
             <div class="kv"><span class="k">WebView</span><span class="v" id="about-ua"></span></div>
             <div class="kv"><span class="k">协议</span><span class="v">GPL-3.0 · 基于 HMCL 上游</span></div>
+          </div>
+
+          <!-- 检查出结果才显示：新版本号、更新说明、下载进度、重启按钮 -->
+          <div class="card pad update-card" id="update-card" hidden>
+            <div class="update-head">
+              <strong id="update-title">发现新版本</strong>
+              <span class="muted small" id="update-version"></span>
+            </div>
+            <p class="update-notes muted small" id="update-notes"></p>
+            <div class="mem-bar update-bar" id="update-bar-wrap" hidden>
+              <i class="mem-seg used" id="update-bar"></i>
+            </div>
+            <div class="update-actions">
+              <span class="muted small" id="update-status"></span>
+              <button class="btn primary small" id="update-now">下载更新</button>
+            </div>
           </div>
 
           <h4>致谢</h4>

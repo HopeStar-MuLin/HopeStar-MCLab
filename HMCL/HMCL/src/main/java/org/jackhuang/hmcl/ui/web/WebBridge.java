@@ -501,6 +501,102 @@ public final class WebBridge {
         }
     }
 
+    // ==================== 启动器自身更新 ====================
+
+    /// 已经下载好、等着替换的更新包。
+    private volatile Path launcherUpdateArchive;
+
+    /// 当前版本号（设置页「关于」显示用）。
+    public String launcherVersion() {
+        return UpdateService.currentVersion();
+    }
+
+    /// 查 GitHub Releases 上的最新版本，结果通过 onLauncherUpdate 推回前端。
+    public void checkLauncherUpdate() {
+        Thread worker = new Thread(() -> {
+            try {
+                pushLauncherUpdate(UpdateService.checkLatest(), null);
+            } catch (Throwable e) {
+                LOG.warning("检查更新失败", e);
+                pushLauncherUpdate(null, e.getMessage() == null ? e.toString() : e.getMessage());
+            }
+        }, "launcher-update-check");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /// 下载更新包。进度通过 onLauncherUpdateProgress 推回，0–100。
+    public void downloadLauncherUpdate(String url, long size) {
+        Thread worker = new Thread(() -> {
+            try {
+                Path dir = org.jackhuang.hmcl.Metadata.HMCL_LOCAL_HOME.resolve("update");
+                Files.createDirectories(dir);
+                // 后缀要跟内容一致：applyUpdate 按 .jar 走热更新（只换 jar）、按 .zip 走整包解压
+                String suffix = url != null && url.toLowerCase().contains(".jar") ? ".jar" : ".zip";
+                Path target = dir.resolve("update-" + System.currentTimeMillis() + suffix);
+                UpdateService.download(url, target, size, percent -> pushLauncherUpdateProgress((int) percent));
+                launcherUpdateArchive = target;
+                pushLauncherUpdateProgress(100);
+                pushLauncherUpdateReady(target.toString());
+            } catch (Throwable e) {
+                LOG.warning("下载更新包失败", e);
+                pushLauncherUpdate(null, "下载失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
+            }
+        }, "launcher-update-download");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /// 装更新：写一个延迟脚本，退出后由它解压覆盖并重新启动。
+    public void applyLauncherUpdate() {
+        Path archive = launcherUpdateArchive;
+        if (archive == null || !Files.isRegularFile(archive)) {
+            toast("还没有下载好更新包");
+            return;
+        }
+        // 安装目录就是 exe 所在目录；壳启动 Java 时把工作目录设成了那里
+        Path installDir = Path.of(System.getProperty("user.dir"));
+        try {
+            UpdateService.applyUpdate(archive, installDir);
+        } catch (Throwable e) {
+            LOG.warning("启动更新脚本失败", e);
+            toast("更新失败：" + (e.getMessage() == null ? e.toString() : e.getMessage()));
+            return;
+        }
+        toast("正在退出，马上重启完成更新");
+        Thread exit = new Thread(() -> {
+            try {
+                Thread.sleep(900);
+            } catch (InterruptedException ignored) {
+            }
+            System.exit(0);
+        }, "launcher-update-exit");
+        exit.setDaemon(false);
+        exit.start();
+    }
+
+    private void pushLauncherUpdate(@Nullable JsonObject data, @Nullable String error) {
+        JsonObject root = new JsonObject();
+        root.addProperty("ok", error == null);
+        if (error != null) {
+            root.addProperty("error", error);
+        }
+        if (data != null) {
+            root.add("data", data);
+        }
+        execute("window.__hmcl && window.__hmcl.onLauncherUpdate("
+                + JsonUtils.GSON.toJson(JsonUtils.GSON.toJson(root)) + ")");
+    }
+
+    private void pushLauncherUpdateProgress(int percent) {
+        execute("window.__hmcl && window.__hmcl.onLauncherUpdateProgress(" + percent + ")");
+    }
+
+    private void pushLauncherUpdateReady(String path) {
+        execute("window.__hmcl && window.__hmcl.onLauncherUpdateReady("
+                + JsonUtils.GSON.toJson(path) + ")");
+    }
+
     // ==================== 导入已有游戏目录 ====================
 
     /// 让用户挑一个已有的游戏目录导入。

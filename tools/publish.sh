@@ -42,7 +42,7 @@ INCLUDE_FILES=(
     "AGENT.md"
     "build.sh"
     "run.cmd"
-    "启动器图标.png"
+    "assets"          # 品牌源图与 README 截图
 )
 INCLUDE_DIRS=(
     "HMCL"          # 上游 fork 的 Gradle 工程（含新增的 ui/web 与 assets/web）

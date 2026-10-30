@@ -10,7 +10,7 @@ import os
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "启动器图标.png")
+SRC = os.path.join(ROOT, "assets", "brand", "icon-source.png")
 TAURI = os.path.join(ROOT, "shell", "src-tauri", "icons")
 JAVA_IMG = os.path.join(ROOT, "HMCL", "HMCL", "src", "main", "resources", "assets", "img")
 WEB_IMG = os.path.join(ROOT, "HMCL", "HMCL", "src", "main", "resources", "assets", "web", "img")

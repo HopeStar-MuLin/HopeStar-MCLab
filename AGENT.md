@@ -13,7 +13,7 @@
 
 - 上游基线：`HMCL 3.17.0-SNAPSHOT`（`HMCL/gradle.properties` 里的版本号）
 - 许可：**GPL-3.0**（根目录 `LICENSE`），修改声明见 `NOTICE`
-- 名字与图标：HopeStar-MCLab + 自有图标（`启动器图标.png`），**不得**以上游名义发布
+- 名字与图标：HopeStar-MCLab + 自有图标（`assets/brand/icon-source.png`），**不得**以上游名义发布
 
 界面有两种模式，共用同一套前端资源：
 
@@ -65,7 +65,7 @@ cd shell/src-tauri && cargo build --offline
 #   cp shell/src-tauri/target/release/hmcl-shell.exe dist-package/release/hmcl-shell.exe
 python tools/pack-debug.py
 
-# 换图标：从 启动器图标.png 生成全套尺寸（含 exe 内嵌 ico）
+# 换图标：从 assets/brand/icon-source.png 生成全套尺寸（含 exe 内嵌 ico）
 python tools/make-icons.py
 
 # 签名（有证书才签；没配证书自动跳过，发布用 --require-sign 强校验）
@@ -372,7 +372,7 @@ bash tools/publish.sh --remote git@github.com:<账号>/<仓库>.git --tag v3.17.
 | `env/env.sh`、`env/env.cmd`、`env/setup-env.sh` | `env/jdk/`、`env/gradle-home/`、`env/cargo/`、`env/rustup/`、`env/fetch-deps.sh`（旧原型用） |
 | `tools/make-icons.py`、`pack-debug.py`、`official_keys.py`、`publish.sh` | 其它 `tools/*.py`、`tools/cdp-*.js`（本机调试用） |
 | `build.sh`、`run.cmd`、`README.md`、`LICENSE`、`NOTICE`、`AGENT.md`、`.gitignore` | `.cache/`、`.hmcl*`、`*.log`、`*.zip`、`*.jar`（构建产物） |
-| `启动器图标.png`（`make-icons.py` 的源图） | `webui-shell/`（早期原型，已在主线淘汰） |
+| `assets/brand/icon-source.png`（`make-icons.py` 的源图） | `webui-shell/`（早期原型，已在主线淘汰） |
 
 白名单写在 `tools/publish.sh` 的 `INCLUDE_*` 数组里；要加文件改那里，不要靠"记得别 add"。
 

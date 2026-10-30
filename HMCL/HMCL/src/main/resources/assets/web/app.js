@@ -240,7 +240,7 @@
       ? (s.launcherName || 'HopeStar-MCLab') + ' ' + s.launcherVersion
       : '';
     put('set-launcher-version', launcherLabel);
-    put('about-version', launcherLabel);
+    put('about-version', s.launcherVersion || '');
     put('set-game-dir', s.gameDirectory);
     applyDownloadSettings(s);
 
@@ -1276,6 +1276,53 @@
         }
       }, 8000);
     });
+  }
+
+  // ---------------- 启动器更新 ----------------
+  //
+  // 走 GitHub Releases：检查 → 下载 → 写一个延迟脚本，退出后解压覆盖再启动。
+  // 运行中的 exe 是锁着的，所以最后一步必须等进程退干净才做。
+
+  var updateState = { info: null, ready: false };
+
+  function setUpdateStatus(text) {
+    var el = document.getElementById('update-status');
+    if (el) { el.textContent = text || ''; }
+  }
+
+  function setUpdateBar(percent) {
+    var wrap = document.getElementById('update-bar-wrap');
+    var bar = document.getElementById('update-bar');
+    if (!wrap || !bar) { return; }
+    wrap.hidden = percent == null;
+    if (percent != null) { bar.style.width = Math.max(0, Math.min(100, percent)) + '%'; }
+  }
+
+  function initUpdateUi() {
+    var check = document.getElementById('check-update');
+    if (check) {
+      check.addEventListener('click', function () {
+        if (check.disabled) { return; }
+        check.disabled = true;
+        check.textContent = '检查中…';
+        var card = document.getElementById('update-card');
+        if (card) { card.hidden = true; }
+        call('checkLauncherUpdate');
+      });
+    }
+    var now = document.getElementById('update-now');
+    if (now) {
+      now.addEventListener('click', function () {
+        if (now.disabled) { return; }
+        if (updateState.ready) { call('applyLauncherUpdate'); return; }
+        if (!updateState.info || !updateState.info.url) { return; }
+        now.disabled = true;
+        now.textContent = '下载中…';
+        setUpdateStatus('正在下载更新包…');
+        setUpdateBar(0);
+        call('downloadLauncherUpdate', updateState.info.url, updateState.info.size || 0);
+      });
+    }
   }
 
   function initLoginModals() {
@@ -2359,6 +2406,7 @@
     });
 
     initLoginModals();
+    initUpdateUi();
     bindInstancePage();
     bindContextMenuDismiss();
     // 内存数据每 30 秒刷一次：开着设置页盯着内存条看，
@@ -7872,6 +7920,49 @@
         toast('这个目录里没找到可用的版本，确认选的是 .minecraft 目录', 'error');
       }
     },
+    /// 检查更新的结果：有新版就展开更新卡片，没有就一句 toast
+    onLauncherUpdate: function (json) {
+      var check = document.getElementById('check-update');
+      if (check) { check.disabled = false; check.textContent = '检查更新'; }
+      var payload = null;
+      try { payload = JSON.parse(json); } catch (e) { return; }
+      if (!payload || !payload.ok) {
+        setUpdateStatus('检查失败');
+        toast('检查更新失败：' + ((payload && payload.error) || '网络错误'), 'error');
+        return;
+      }
+      var d = payload.data || {};
+      updateState.info = d;
+      updateState.ready = false;
+      var card = document.getElementById('update-card');
+      if (!d.hasUpdate) {
+        if (card) { card.hidden = true; }
+        toast('已经是最新版本 ' + (d.current || ''));
+        return;
+      }
+      var ver = document.getElementById('update-version');
+      if (ver) { ver.textContent = '当前 ' + (d.current || '?') + ' → 最新 ' + (d.latest || '?'); }
+      var notes = document.getElementById('update-notes');
+      if (notes) { notes.textContent = d.notes || '这次更新没有附说明。'; }
+      var now = document.getElementById('update-now');
+      if (now) { now.disabled = false; now.textContent = '下载更新'; }
+      setUpdateBar(null);
+      setUpdateStatus('');
+      if (card) { card.hidden = false; }
+    },
+
+    onLauncherUpdateProgress: function (percent) {
+      setUpdateBar(percent);
+      setUpdateStatus('正在下载… ' + percent + '%');
+    },
+
+    onLauncherUpdateReady: function () {
+      updateState.ready = true;
+      var now = document.getElementById('update-now');
+      if (now) { now.disabled = false; now.textContent = '重启并安装'; }
+      setUpdateStatus('下载完成，点右边重启安装');
+    },
+
     onNewsDetail: function (json) {
       var data = null;
       try { data = JSON.parse(json); } catch (e) { return; }
