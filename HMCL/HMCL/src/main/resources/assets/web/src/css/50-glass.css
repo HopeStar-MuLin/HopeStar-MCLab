@@ -1,0 +1,407 @@
+/* ============================================================================
+   最小尺寸兜底
+   ----------------------------------------------------------------------------
+   窗口下限是 880×620（见 main.rs 的 min_inner_size 和 app.js 的 MIN_W/MIN_H）。
+   但有些情况仍然会小于它：外接屏分辨率不够、系统 DPI 缩放把逻辑尺寸压小、
+   或者是程序自己改尺寸。这时候不再硬挤布局——强行挤会把下载页的工具栏、
+   六列标签、卡片按钮直接挤出可视区且没有滚动条，等于内容凭空消失。
+   改成让内容区横向滚动，至少能划过去看。
+   ========================================================================== */
+@media (max-width: 879px) {
+  .page-body {
+    overflow-x: auto;
+    overflow-y: auto;
+  }
+  .page-body > .page { min-width: 828px; }
+  /* 横向滚动时顶栏不要跟着滚 */
+  .page-head { position: relative; z-index: 6; }
+}
+
+/* 预览框：滚轮缩放的百分比徽标 + 相对定位的锚点 */
+.preview-slot { position: relative; }
+.preview-zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity calc(.18s * var(--anim-scale)) ease, transform calc(.18s * var(--anim-scale)) ease;
+  pointer-events: none;
+}
+.preview-zoom.on { opacity: 1; transform: none; }
+
+/* ---------- 登录弹窗 ---------- */
+.auth-body { width: min(480px, 92vw); }
+.auth-hint { margin: 0 0 var(--sp-3); line-height: 1.7; }
+.auth-select { width: 100%; height: 34px; }
+.auth-servers { margin: calc(-1 * var(--sp-2)) 0 var(--sp-3); }
+.auth-servers .link { font-size: 12px; text-align: left; padding: 0; }
+
+.auth-add {
+  padding: 10px 12px;
+  margin-bottom: var(--sp-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.auth-add .dlc-field { margin-bottom: 8px; }
+.auth-add-actions { display: flex; align-items: center; gap: 10px; }
+.auth-add-actions .dlc-hint { flex: 1 1 auto; }
+
+.auth-code-box { text-align: center; margin-top: var(--sp-3); }
+.auth-code {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: .22em;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--accent);
+  padding: 10px 0;
+  user-select: all;
+}
+.auth-link {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+/* 账号页：已登录账号列表里的皮肤站标签 */
+.account-row .acc-channel { color: var(--muted); font-size: 11.5px; }
+
+/* ---------- 加载占位：统一居中 ----------
+   所有「正在拉取…」都走 .loading-block，落在容器正中。
+   grid 容器里跨满所有列，否则只会占第一格（左上角）。 */
+.loading-block {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  min-height: clamp(220px, 42vh, 480px);
+  color: var(--muted);
+  font-size: 12.5px;
+  text-align: center;
+}
+.loading-block .gooey { height: 18px; }
+.loading-block .gooey i { width: 11px; height: 11px; }
+.loading-text { letter-spacing: .01em; }
+
+/* ============================================================================
+   设置页：行式布局
+   ----------------------------------------------------------------------------
+   HMCL 的设置项都是「左边标题+副标题，右边控件」的一行，用同一个 .set-row
+   撑起来，比每项写一套 kv 少一半标签，窄窗口下也不会把控件挤到标题下面。
+   ========================================================================== */
+
+.set-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.set-row:last-child { border-bottom: none; }
+.set-row .k {
+  flex: 0 0 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.set-row .k .sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.set-row .v {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.set-row .v .ad-select,
+.set-row .v .dlc-input { max-width: 320px; }
+.set-row .v .cs-wrap { max-width: 320px; min-width: 0; }
+.set-row .v .cs-btn { max-width: 320px; }
+.set-row.readonly .v { color: var(--muted); font-size: 12px; }
+
+.set-check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.set-num {
+  width: 86px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.set-num:focus { outline: none; border-color: var(--accent); }
+.memory-row { display: flex; align-items: center; gap: 6px; }
+.memory-row .dash { color: var(--muted); font-size: 12px; }
+.memory-hint { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+.set-divider { height: 1px; background: var(--border); margin: 12px 0; }
+.set-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 8px;
+  font-size: 12.5px;
+}
+
+/* Java 列表 */
+.java-list { display: flex; flex-direction: column; gap: 6px; }
+
+/* 「已检测到的 Java」右侧两个按钮：下载 / 重新扫描。挨着放，中间留一点缝 */
+.set-head-acts { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ---------- 下载 Java 弹窗 ---------- */
+
+.java-dl-body { width: min(560px, 92vw); display: flex; flex-direction: column; gap: 12px; }
+.java-dl-hint { margin: 0; line-height: 1.6; }
+
+/* 版本一多就要滚，但别让弹窗撑到屏幕外 */
+.java-dl-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: min(58vh, 460px); overflow-y: auto;
+  padding-right: 4px;
+}
+
+.java-dl-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.java-dl-main { flex: 1; min-width: 0; }
+.java-dl-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600;
+}
+.java-dl-sub {
+  margin-top: 3px; font-size: 11.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* LTS / 推荐：两个小标签，别做成按钮的样子 */
+.java-dl-badge {
+  font-size: 10.5px; font-weight: 500; line-height: 1;
+  padding: 3px 6px; border-radius: 999px;
+  border: 1px solid var(--border-strong); color: var(--muted);
+}
+.java-dl-badge.lts { color: var(--accent); border-color: var(--accent); }
+.java-dl-badge.rec { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+
+.java-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.java-main { flex: 1 1 auto; min-width: 0; }
+.java-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.java-path {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.java-tag {
+  font-size: 10.5px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.java-acts { display: flex; gap: 6px; flex: none; }
+
+.set-add { display: flex; gap: 8px; margin-top: 8px; }
+.set-add .dlc-input { flex: 1 1 auto; min-width: 0; }
+
+/* 列表里的加载占位不要撑到 42vh */
+.loading-block.small { min-height: 84px; }
+
+/* ============================================================================
+   应用化：不是网页
+   ----------------------------------------------------------------------------
+   WebView 默认把内容当文档：能拖选文字、图片能拖走、光标到哪儿都变 I 形。
+   这些都是浏览器的习惯，不是应用的。整体关掉，输入框和路径单独放开。
+   ========================================================================== */
+
+html, body {
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.selectable,
+.mono {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+input,
+textarea {
+  cursor: text;
+}
+
+/* 图片不该被拖出一个幽灵缩略图 */
+img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+/* 关掉动画时，只保留必要的过渡，其余全部立现 */
+body.no-anim *,
+body.no-anim *::before,
+body.no-anim *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+}
+
+/* 系统级的「减少动态效果」。这是无障碍设置，优先级比启动器里的开关高：
+   开了它的人不是"不太喜欢动画"，是动画会让人头晕恶心。
+   JavaFX WebEngine 不认这条媒体查询，忽略即可，不影响那边。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* 设置项标题留够宽度：190px 时「改用 java.exe 启动，会带一个控制台窗口」
+   会在「窗 / 口」之间断开，读起来别扭 */
+.set-row .k { flex: 0 0 212px; }
+
+
+/* ============================================================================
+   动态正文弹窗
+   ----------------------------------------------------------------------------
+   点首页的更新日志不再跳浏览器，正文在壳里读。内容是 Mojang 给的 HTML 片段，
+   JS 里用 DOMParser 洗过一遍（白名单标签 + 去掉 on* 属性）再塞进来。
+   ========================================================================== */
+
+.news-body {
+  width: 720px;
+  max-width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-5);
+}
+.news-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: -4px 0 10px;
+}
+.news-article {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.news-article::-webkit-scrollbar { width: 8px; }
+.news-article::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.news-html {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text);
+  word-break: break-word;
+}
+.news-html > *:first-child { margin-top: 0; }
+.news-html p { margin: 0 0 11px; }
+.news-html h1,
+.news-html h2,
+.news-html h3,
+.news-html h4 {
+  margin: 20px 0 8px;
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.news-html ul,
+.news-html ol { margin: 0 0 12px; padding-left: 20px; }
+.news-html li { margin: 3px 0; }
+.news-html img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 14px 0;
+  border-radius: var(--r-md);
+}
+.news-html a { color: var(--accent); text-decoration: none; }
+.news-html a:hover { text-decoration: underline; }
+.news-html blockquote {
+  margin: 12px 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--muted);
+}
+.news-html code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.news-html hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 16px 0;
+}
+.news-empty { padding: 40px 0; text-align: center; color: var(--muted); font-size: 12.5px; }
+
+/* 正文弹窗里的加载占位别用 42vh，弹窗本来就没那么高 */
+.news-article .loading-block { min-height: 160px; }
+
+
