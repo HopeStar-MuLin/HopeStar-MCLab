@@ -1,0 +1,509 @@
+/* ================= 内置背景图 + 毛玻璃 =================
+   结构照 QQ-Bot 桌面端那套：
+   - 背景独立一层（fixed + z-index:-2），不参与布局
+   - 上面盖一层 --bg-shade 蒙层调对比度（亮色提亮 / 暗色压暗）
+   - 顶栏 / 侧栏 / 页头用 backdrop-filter 做真玻璃
+   - 卡片用半透明面（不做 blur）——滚动区里挂一堆 backdrop-filter 会明显掉帧 */
+
+:root {
+  --bg-shade: rgba(246, 248, 252, .68);
+  --hero-bg: rgba(255, 255, 255, .72);
+  --hero-line: rgba(255, 255, 255, .65);
+  --hero-icon-bg: rgba(16, 24, 40, .06);
+  --glass: rgba(255, 255, 255, .6);
+  --glass-line: rgba(255, 255, 255, .55);
+  --surface: rgba(255, 255, 255, .9);
+  --surface-2: rgba(248, 249, 252, .82);
+  --surface-3: rgba(238, 240, 246, .72);
+}
+
+body[data-theme="dark"] {
+  --bg-shade: rgba(8, 10, 16, .68);
+  --hero-bg: rgba(28, 31, 38, .66);
+  --hero-line: rgba(255, 255, 255, .1);
+  --hero-icon-bg: rgba(255, 255, 255, .08);
+  --glass: rgba(21, 23, 28, .58);
+  --glass-line: rgba(255, 255, 255, .08);
+  --surface: rgba(21, 23, 28, .74);
+  --surface-2: rgba(28, 31, 38, .7);
+  --surface-3: rgba(36, 40, 48, .7);
+}
+
+/* 整页底色交给背景图，body 本身透明 */
+body { background: transparent; }
+
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  /* --bg-image 由设置页的「自定义背景图」写入（data URL） */
+  background-image: var(--bg-image, url('img/background.png'));
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.app-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--bg-shade);
+}
+
+/* 顶栏 / 侧栏 / 页头：真毛玻璃 */
+.titlebar,
+.rail,
+.page-head {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+
+.titlebar,
+.page-head { border-bottom: 1px solid var(--glass-line); }
+.rail { border-right: 1px solid var(--glass-line); }
+
+/* 页面滚动体透明，背景图透出来 */
+.page-body,
+.content,
+.desk-body { background: transparent; }
+
+/* 卡片类：半透明面，不加 blur */
+.card,
+.instance-card,
+.news-item,
+.account-row,
+.asset-card,
+.login-card,
+.settings-group .card {
+  background: var(--surface);
+}
+
+/* 输入框在玻璃上要更实一点，不然打字看不清 */
+input[type="text"],
+input[type="password"],
+textarea,
+select { background: var(--surface-2); }
+
+/* 设置页吸顶导航也是玻璃 */
+.settings-nav {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  border-color: var(--glass-line);
+}
+
+/* 弹窗：背后还有一层页面，玻璃让层次更自然 */
+.modal-body {
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+}
+
+/* 下载任务小窗 */
+.dl-popover {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border-color: var(--glass-line);
+}
+
+/* ---------- 下载页分类标签 ---------- */
+.dl-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  margin-bottom: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.dl-tabs::-webkit-scrollbar { display: none; }
+
+.dl-tabs button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.dl-tabs button:hover { background: var(--surface-2); color: var(--text); }
+.dl-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* 胶囊接管选中底色（见 10-components 的「胶囊指示器」） */
+.dl-tabs.pill-on button.on,
+.dl-tabs.pill-on button.on:hover { background: transparent; }
+
+/* ---------- 内容列表（模组 / 资源包 / 光影 / 整合包） ---------- */
+/* 原生 select 现在基本都会被 enhanceSelect 换成 .cs-wrap/.cs-btn，
+   这里只给「还没换到」的瞬间和脚本直接操作 select 的情况兜底，
+   尺寸/圆角/字号与 .cs-btn 保持一致，避免两套外观 */
+.ad-select {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ad-select:focus { outline: none; border-color: var(--accent); }
+
+.ad-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--sp-3);
+}
+
+.ad-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), transform var(--dur-fast), box-shadow var(--dur-fast);
+}
+.ad-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+
+.ad-icon {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: var(--r-md);
+  object-fit: cover;
+  /* 图标本身通常带 alpha，垫底色会让它看起来像贴在一张灰卡片上 */
+  background: none;
+  image-rendering: auto;
+}
+/* 没有图标时留一个字母占位，比空白方块好看 */
+.ad-icon.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.ad-body { min-width: 0; flex: 1; }
+.ad-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ad-meta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ad-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  /* 描述只留两行，卡片高度才齐 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ad-tags { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.ad-tags .tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  line-height: 16px;
+}
+
+/* ---------- 工具栏里的下拉：宽度定死 ----------
+   实例名是用户自己起的，类别名是平台给的，两个都不可控。
+   让它们按文字撑宽，一条工具栏立刻被顶折。所以宽度在这里写死：
+   窗口窄了等比收缩（flex-shrink），文字自己走省略号，展开的菜单仍是全名。
+   不做「窄了就藏按钮」那种取舍 —— 每个控件始终都在。 */
+.cs-wrap.ad-sel { flex: 0 1 auto; min-width: 64px; }
+.cs-wrap.ad-sel .cs-btn { width: 100%; justify-content: space-between; }
+.cs-wrap.ad-sel .cs-label {
+  min-width: 0; max-width: none; overflow: hidden; text-overflow: ellipsis;
+}
+.cs-wrap.ad-sel[data-ad-sel="ad-cat"] { width: 132px; }
+.cs-wrap.ad-sel[data-ad-sel="ad-instance"] { width: 132px; }
+.cs-wrap.ad-sel[data-ad-sel="ad-sort"] { width: 82px; }
+/* 平台名固定是 Modrinth / CurseForge。92px 会把 Modrinth 截成 Modrin…，
+   104 刚好放下最长的那个（CurseForge 也一样宽） */
+.cs-wrap.ad-sel[data-ad-sel="ad-source"] { width: 106px; }
+/* 「每页 20/50/100/150/200」里最长的「每页 100」+ 箭头，104 刚好不截断 */
+.cs-wrap.ad-sel[data-ad-sel="dl-page-size"] { width: 104px; }
+
+.ad-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+.ad-pager .btn { padding: 6px 14px; font-size: 12.5px; }
+.ad-pager .btn:disabled { opacity: .45; cursor: default; }
+
+/* 内容版本窗里的一行：主标题 + 副行（加载器 / 日期） */
+.ad-ver-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.lm-sub {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 工具栏里的导入按钮不能被压缩，否则文字会被切掉 */
+#ad-import { flex: none; }
+
+
+/* ---------- 内容列表的空状态 ----------
+   之前 .empty 在 grid 里只占一格、贴着顶部。这里让它跨满整行并撑高，
+   视觉上居中在列表区中间。 */
+.ad-grid > .empty {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  max-width: none;
+  text-align: center;
+  line-height: 1.7;
+}
+
+/* ---------- 自绘下拉 ----------
+   原生 <select> 的弹层在 WebView2 里是系统样式（灰底方角），
+   和整个玻璃面板完全不搭，所以把 select 藏起来、自己画一个。 */
+.cs-wrap { position: relative; flex: none; }
+
+/* 原生 select 保留在 DOM 里（value / options / change 都在用它），只是看不见 */
+.cs-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border);
+  /* 和输入框、按钮同一档圆角：以前这里是 r-sm，跟旁边的输入框对不齐 */
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 100%;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+/* 长选项（Java 路径之类）不该把设置行撑破 */
+.cs-btn .cs-label { overflow: hidden; text-overflow: ellipsis; }
+.cs-btn:hover { background: var(--surface); }
+.cs-btn.open { border-color: var(--accent); background: var(--surface); }
+
+.cs-caret {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  opacity: .55;
+  transition: transform var(--dur-fast);
+}
+.cs-btn.open .cs-caret { transform: rotate(180deg); }
+
+.cs-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 70;
+  /* 弹层按最长选项撑开：之前只写 min-width:100%，遇到「隐藏，游戏退出后再打开」
+     这种长选项就被截断，看着像错位。上限压住，免得贴到屏幕外。 */
+  min-width: 100%;
+  width: max-content;
+  /* 宽度跟窗口走，别固定死：类别名长短差很多，窄屏要能缩 */
+  max-width: min(380px, 70vw);
+  /* 高度也限一下。Modrinth 资源包有 30 个类别，不限高会从工具栏一直铺到屏幕底 */
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  /* 关键：滚到菜单首尾时不要把滚动传给页面。
+     不然在类别下拉里滚轮一搓，整个下载页跟着跳到顶。 */
+  overscroll-behavior: contain;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-pop);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  /* 菜单只向下弹（没有向上翻转的分支），所以缩放锚点就在上沿：
+     视觉上是"从按钮底下长出来"，而不是从中心胀开。 */
+  transform-origin: top center;
+  animation: menuIn calc(.16s * var(--anim-scene)) var(--ease-standard) both;
+}
+@keyframes menuIn {
+  from { opacity: 0; transform: translate3d(0, -5px, 0) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+.cs-menu.hidden { display: none; }
+.cs-menu::-webkit-scrollbar { width: 9px; }
+.cs-menu::-webkit-scrollbar-thumb {
+  background: var(--border); border-radius: 5px; background-clip: content-box;
+}
+.cs-menu::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+
+.cs-item {
+  padding: 7px 10px;
+  white-space: nowrap;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cs-item:hover { background: var(--surface-2); }
+.cs-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* 图标加载失败时的首字母占位：给一层淡底，否则和卡片背景糊在一起看不见 */
+.ad-icon.placeholder {
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* 图标加载中给一层淡底，加载完成后移除——真图标要保持透明，
+   不能因为它自带 alpha 就在后面垫一块灰。 */
+.ad-icon.loading { background: var(--surface-2); }
+
+/* 设置页里的小输入框（下载线程数） */
+.threads-input { width: 88px; text-align: center; margin-left: var(--sp-2); }
+.threads-input:disabled { opacity: .5; }
+
+/* ---------- 实例内容弹层 ---------- */
+.addon-body { width: 540px; }
+.addon-list {
+  margin-top: var(--sp-3);
+  max-height: 380px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.addon-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.addon-row:last-child { border-bottom: 0; }
+.addon-row .addon-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.addon-row.off .addon-name { color: var(--muted); text-decoration: line-through; }
+.addon-row .addon-size { color: var(--muted); font-variant-numeric: tabular-nums; }
+.addon-row .icon-btn { flex: none; }
+.addon-list .empty { margin: 0; border: 0; border-radius: 0; }
+
+/* ---------- 没有可用实例时的引导弹窗 ----------
+   入口在主页的「启动游戏 / 打开目录」：没实例时不再静默失败，
+   弹这个让用户选下载、装整合包或者导入已有目录。 */
+.noinst-body { width: 468px; }
+.noinst-hint { margin: 0 0 var(--sp-4); line-height: 1.7; }
+
+.noinst-list { display: flex; flex-direction: column; gap: 8px; }
+
+.noinst-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
+}
+.noinst-item:hover {
+  border-color: var(--accent);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+.noinst-ico {
+  flex: 0 0 34px;
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.noinst-ico svg { width: 18px; height: 18px; fill: currentColor; }
+.noinst-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.noinst-main strong { font-size: 13.5px; font-weight: 600; }
+.noinst-main span { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.noinst-go { flex: none; font-size: 18px; color: var(--muted); line-height: 1; }
+
+/* 实例页空状态：.empty 默认只有一行高，放这么大一块表格区里像条残留提示。
+   撑高一点并让两行文字居中。 */
+#instance-table > .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 240px;
+  text-align: center;
+}
+
