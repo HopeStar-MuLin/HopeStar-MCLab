@@ -1,0 +1,10 @@
+# 编译产物
+lan-module.exe
+
+# 运行时数据（配置、日志、EasyTier 状态）
+data/
+
+# EasyTier 二进制由发布流程单独放置，不入库
+bin/*.exe
+bin/*.dll
+bin/*.sys
