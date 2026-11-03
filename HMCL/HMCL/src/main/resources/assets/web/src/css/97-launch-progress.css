@@ -1,0 +1,44 @@
+/* ---------- 启动进度弹窗 ---------- */
+
+/* 卡片比常规弹窗窄：里面只有一句话和一条进度，铺太宽就显得空 */
+.lp-body { width: 420px; max-width: 92vw; }
+
+.lp-stage {
+  margin: 0; font-size: 13px; line-height: 1.7; color: var(--text);
+  min-height: 22px;
+}
+
+/* 进度条：阶段推进是离散的，过渡给足一点，看起来是「走过去」而不是「跳过去」 */
+.lp-bar {
+  height: 6px; margin: 14px 0 0;
+  border-radius: 999px; background: var(--surface-3);
+  overflow: hidden;
+}
+.lp-fill {
+  display: block; height: 100%; width: 0;
+  border-radius: inherit; background: var(--accent);
+  transition: width .35s ease;
+}
+/* 还没拿到阶段时走不确定动画：那种缓慢往返的条，比一条静止的空条更像「在做事」 */
+.lp-bar.pending .lp-fill {
+  width: 38% !important;
+  animation: lp-slide 1.15s ease-in-out infinite;
+}
+@keyframes lp-slide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(300%); }
+}
+
+.lp-foot {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 16px;
+}
+.lp-note {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 11.5px; line-height: 1.6; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lp-note.error { color: #c0392b; white-space: normal; }
+
+/* 启动失败时卡片留在原地，用户点「关闭」才走 */
+.lp-body.failed .lp-bar { display: none; }
