@@ -1,0 +1,186 @@
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2021  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.ui.account;
+
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.ObjectBinding;
+import javafx.beans.binding.StringBinding;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
+import javafx.beans.value.ObservableBooleanValue;
+import javafx.scene.control.RadioButton;
+import javafx.scene.control.Skin;
+import org.jackhuang.hmcl.auth.Account;
+import org.jackhuang.hmcl.auth.AuthenticationException;
+import org.jackhuang.hmcl.auth.ClassicAccount;
+import org.jackhuang.hmcl.auth.CredentialExpiredException;
+import org.jackhuang.hmcl.auth.authlibinjector.AuthlibInjectorAccount;
+import org.jackhuang.hmcl.auth.authlibinjector.AuthlibInjectorServer;
+import org.jackhuang.hmcl.auth.offline.OfflineAccount;
+import org.jackhuang.hmcl.auth.yggdrasil.CompleteGameProfile;
+import org.jackhuang.hmcl.auth.yggdrasil.TextureType;
+import org.jackhuang.hmcl.setting.Accounts;
+import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.DialogController;
+import org.jackhuang.hmcl.ui.account.wardrobe.WardrobePane;
+import org.jackhuang.hmcl.util.StringUtils;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CancellationException;
+
+import static java.util.Collections.emptySet;
+import static javafx.beans.binding.Bindings.createBooleanBinding;
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
+public class AccountListItem extends RadioButton {
+
+    private final Account account;
+    private final StringProperty title = new SimpleStringProperty();
+    private final StringProperty subtitle = new SimpleStringProperty();
+
+    public AccountListItem(Account account) {
+        this.account = account;
+        getStyleClass().clear();
+        setUserData(account);
+
+        String loginTypeName = Accounts.getLocalizedLoginTypeName(Accounts.getAccountFactory(account));
+        String portableSuffix = account.isPortable() ? ", " + i18n("account.portable") : "";
+        if (account instanceof AuthlibInjectorAccount) {
+            AuthlibInjectorServer server = ((AuthlibInjectorAccount) account).getServer();
+            subtitle.bind(Bindings.concat(
+                    loginTypeName, ", ", i18n("account.injector.server"), ": ",
+                    Bindings.createStringBinding(server::getName, server), portableSuffix));
+        } else {
+            subtitle.set(loginTypeName + portableSuffix);
+        }
+
+        StringBinding profileName = Bindings.createStringBinding(() -> {
+            String name = account.getProfileName();
+            return StringUtils.isBlank(name) ? account.getProfileID().toString() : name;
+        }, account);
+        if (account instanceof ClassicAccount classicAccount) {
+            title.bind(Bindings.concat(profileName, " - ", classicAccount.getLoginName()));
+        } else {
+            title.bind(profileName);
+        }
+    }
+
+    @Override
+    protected Skin<?> createDefaultSkin() {
+        return new AccountListItemSkin(this);
+    }
+
+    public Task<?> refreshAsync() {
+        return Task.runAsync(() -> {
+            account.clearCache();
+            try {
+                account.logIn();
+            } catch (CredentialExpiredException e) {
+                try {
+                    DialogController.logIn(account);
+                } catch (CancellationException e1) {
+                    // ignore cancellation
+                } catch (Exception e1) {
+                    LOG.warning("Failed to refresh " + account + " with password", e1);
+                    throw e1;
+                }
+            } catch (AuthenticationException e) {
+                LOG.warning("Failed to refresh " + account + " with token", e);
+                throw e;
+            }
+        });
+    }
+
+    public ObservableBooleanValue canUploadSkin() {
+        if (account instanceof AuthlibInjectorAccount aiAccount) {
+            ObjectBinding<Optional<CompleteGameProfile>> profile = aiAccount.getYggdrasilService().getProfileRepository().binding(aiAccount.getProfileID());
+            return createBooleanBinding(() -> {
+                Set<TextureType> uploadableTextures = profile.get()
+                        .map(AuthlibInjectorAccount::getUploadableTextures)
+                        .orElse(emptySet());
+                return uploadableTextures.contains(TextureType.SKIN);
+            }, profile);
+        } else if (account instanceof OfflineAccount || account.canUploadSkin()) {
+            return createBooleanBinding(() -> true);
+        } else {
+            return createBooleanBinding(() -> false);
+        }
+    }
+
+    /**
+     * @return the skin upload task, null if no file is selected
+     */
+    @Nullable
+    public Task<?> uploadSkin() {
+        if (account instanceof OfflineAccount) {
+            Controllers.dialog(new OfflineAccountSkinPane((OfflineAccount) account));
+            return null;
+        }
+        if (!account.canUploadSkin()) {
+            return null;
+        }
+
+        // 正版 / 外置登录账号统一进衣柜：本地皮肤库选图，点"应用"才上传；披风在同一面板切换
+        Controllers.dialog(new WardrobePane(account));
+        return null;
+    }
+
+    public void remove() {
+        if (!Accounts.canRemoveAccount(account)) {
+            Controllers.confirmBackupAndOverwrite(i18n("account.storage.read_only"), () -> {
+                Accounts.forceOverwriteAccountFiles(account);
+                Accounts.getAccounts().remove(account);
+            });
+            return;
+        }
+
+        Accounts.getAccounts().remove(account);
+    }
+
+    public Account getAccount() {
+        return account;
+    }
+
+    public String getTitle() {
+        return title.get();
+    }
+
+    public void setTitle(String title) {
+        this.title.set(title);
+    }
+
+    public StringProperty titleProperty() {
+        return title;
+    }
+
+    public String getSubtitle() {
+        return subtitle.get();
+    }
+
+    public void setSubtitle(String subtitle) {
+        this.subtitle.set(subtitle);
+    }
+
+    public StringProperty subtitleProperty() {
+        return subtitle;
+    }
+}
