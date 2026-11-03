@@ -1,0 +1,128 @@
+# ==== 构建产物 ====
+build/
+out/
+bin/
+.gradle/
+*.class
+
+# HMCL 打包出来的 exe 目录（tools/pack_exe.py 生成，可重建）
+build-win/
+runtime/
+
+# dist 下的二进制可以重建，只保留说明文件
+dist/*.jar
+dist/*.zip
+dist/HMCL/
+
+# ==== 依赖二进制 ====
+# webui-shell 的 JavaFX jar 由 env/fetch-deps.sh 重新下载
+webui-shell/lib/*.jar
+
+# 便携 JDK 与 Gradle 缓存不入库（体积大，可用 env/setup-env.sh 重建）
+env/jdk/
+env/gradle-home/
+
+# ==== 运行时数据 ====
+.hmcl/
+HMCL/.hmcl/
+.cache/
+logs/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# ==== 编辑器 / 系统 ====
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ==== 临时 ====
+*.tmp
+*.bak
+*.orig
+
+# 演示 / 测试用的本地数据
+.hmcl-demo/
+.hmcl-test/
+.hmcl-fresh/
+.minecraft/
+
+# ==== Tauri 壳 ====
+shell/src-tauri/target/
+shell/src-tauri/gen/schemas/
+shell/node_modules/
+
+# Rust 工具链（和 env/jdk 一样，可用 env/setup-env.sh 重建）
+env/cargo/
+env/rustup/
+env/rutrustup/
+
+# 打包出来的调试包（可重建，正式产物走 Release 附件）
+dist-package/
+
+# 上游凭据（tools/official_keys.py 生成，绝不能提交）
+.cache/keys.env
+.cache/keys.local.env
+.cache/keys.cmd
+keys.env
+
+# 启动器运行态（会被 launcher 改写，不入库）
+.hmcl-dl/
+
+# docs/ 只在本地留档：截图含账号/皮肤等个人信息，不进公开仓库
+docs/
+
+# shell/web 是 HMCL 资源目录的镜像（由 npm run sync-web 生成）
+shell/web/
+
+# ==== skinview3d 本地补丁构建（tools/skinview3d-armor）====
+# 依赖和产物都能重建，源码在 src/ 里；真正用的是 assets/web/vendor 里那份
+tools/skinview3d-armor/node_modules/
+tools/skinview3d-armor/dist/
+tools/skinview3d-armor/package-lock.json
+
+# ==== 本地参考源码 / 探针数据（体积大，且不是本仓库的代码）====
+Word/
+tools/chromium-probe/
+tools/vendor-tmp/
+tools/blessing-skin-server-master/
+tools/bs.zip
+env/rustup-init.exe
+
+# 依赖缓存（shell 与 tools/skinview3d-armor 都靠 npm i 重建）
+node_modules/
+
+# 本机会话数据（含本机路径与聊天记录）
+.workbuddy/
+
+# 启动器运行态数据（dist 下只留构建产物）
+dist/data/
+
+# 构建状态文件（tools/release.py 写入，每次构建都变）
+dist/.release_id
+
+# Azure 应用清单含真实 appId，构建时由脚本重新导出
+dist/azure-app-manifest.json
+
+# ==== 本机调试产物 ====
+# 截图里有账号名、皮肤和本机路径，和 docs/ 同一定位：只留本地
+tools/shot-*
+tools/sw-on.png
+tools/sw-off.png
+tools/t1.png
+tools/t2.png
+tools/t3.png
+tmp-*.png
+
+# ==== 联机模块依赖的第三方二进制 ====
+# easytier / wintun / WinDivert 由发布流程单独放置，体积 80 MB
+lan-module/bin/
+
+# ==== 联机与拖放回归用的测试包 ====
+# 250 MB 的真实整合包 / 资源包 / 世界存档，本地自备
+test-data/
+
+# ==== Go 工具链与构建缓存（和 env/jdk 一样可重建）====
+.toolchain/
