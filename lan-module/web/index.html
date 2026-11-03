@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCLab 联机模块</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo"></span>
+    <div>
+      <h1>MCLab 联机</h1>
+      <p class="sub">基于 EasyTier 的点对点组网</p>
+    </div>
+  </div>
+  <div class="badges">
+    <span id="envBadge" class="badge badge-muted">检测中</span>
+    <span id="stateBadge" class="badge badge-muted">未连接</span>
+  </div>
+</header>
+
+<main>
+  <section class="card span2" id="roomCard">
+    <h2>房间</h2>
+    <p class="hint">双方输入同一个房间号即可进入同一虚拟网络，房间号由口令派生，不经过服务器。</p>
+    <div class="row">
+      <label class="field grow">
+        <span>房间号</span>
+        <input id="roomInput" type="text" placeholder="6 位数字或自定义" maxlength="32" autocomplete="off">
+      </label>
+      <button class="btn ghost" id="genRoom">随机生成</button>
+    </div>
+    <div class="row">
+      <label class="field grow">
+        <span>房间口令（可选）</span>
+        <input id="passInput" type="password" placeholder="留空则仅凭房间号识别" autocomplete="off">
+      </label>
+    </div>
+    <div class="row actions">
+      <button class="btn primary" id="btnHost">创建房间（我开服）</button>
+      <button class="btn" id="btnJoin">加入房间</button>
+      <button class="btn danger" id="btnLeave" hidden>断开</button>
+    </div>
+    <p class="meta" id="roomMeta"></p>
+  </section>
+
+  <section class="card" id="profileCard">
+    <h2>联机方案</h2>
+    <p class="hint">不同网络环境需要不同的穿透策略，默认方案覆盖大多数情况。</p>
+    <select id="profileSelect"></select>
+    <p class="advice" id="profileAdvice"></p>
+  </section>
+
+  <section class="card" id="statusCard">
+    <h2>连接状态</h2>
+    <dl class="kv">
+      <dt>MC 地址</dt><dd id="mcAddr">—</dd>
+      <dt>本机虚拟 IP</dt><dd id="selfIp">—</dd>
+      <dt>运行时长</dt><dd id="uptime">—</dd>
+      <dt>局域网发现</dt><dd id="lanDiscover">—</dd>
+    </dl>
+    <div class="peers">
+      <h3>对等节点 <span id="peerCount" class="count">0</span></h3>
+      <ul id="peerList"><li class="empty">暂无连接</li></ul>
+    </div>
+  </section>
+
+  <section class="card span2" id="nodeCard">
+    <h2>引导节点</h2>
+    <p class="hint">节点只负责帮助双方互相发现，数据优先直连；直连失败时由节点转发。</p>
+    <ul id="nodeList" class="node-list"></ul>
+    <div class="row">
+      <label class="field grow">
+        <span>节点名称</span>
+        <input id="nodeName" type="text" placeholder="例如 香港中转" maxlength="24">
+      </label>
+      <label class="field grow">
+        <span>地址</span>
+        <input id="nodeAddr" type="text" placeholder="1.2.3.4:11010">
+      </label>
+      <button class="btn" id="addNode">添加</button>
+    </div>
+    <p class="meta" id="nodeMeta"></p>
+  </section>
+
+  <section class="card span2" id="diagCard">
+    <h2>网络诊断</h2>
+    <p class="hint">组网建立后探测本机 NAT 类型，判断打洞成功的前景。</p>
+    <div class="row actions">
+      <button class="btn" id="btnDiag">开始诊断</button>
+    </div>
+    <dl class="kv">
+      <dt>UDP NAT</dt><dd id="natType">—</dd>
+      <dt>TCP NAT</dt><dd id="tcpNat">—</dd>
+      <dt>公网地址</dt><dd id="publicIp">—</dd>
+      <dt>研判</dt><dd id="natHint">—</dd>
+    </dl>
+  </section>
+
+  <section class="card span2" id="logCard">
+    <h2>运行日志</h2>
+    <div class="row actions">
+      <button class="btn ghost small" id="btnLogRefresh">刷新</button>
+      <label class="checkbox"><input type="checkbox" id="logAuto" checked> 自动</label>
+      <button class="btn ghost small" id="btnCopyLog">复制</button>
+    </div>
+    <pre id="logBox" class="logs"></pre>
+  </section>
+</main>
+
+<footer>
+  <span id="verInfo"></span>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
