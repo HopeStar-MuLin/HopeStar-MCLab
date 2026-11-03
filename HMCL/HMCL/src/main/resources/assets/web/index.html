@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>HopeStar-MCLab</title>
+  <link rel="stylesheet" href="app.css?v=af3ed24d8a">
+  <!-- 皮肤层。只覆盖设计令牌 + 少数组件长相，骨架仍然在 app.css 里。
+       必须放在 app.css 之后：同优先级下后加载的胜出，这是整套切换机制的基础。 -->
+  <link rel="stylesheet" href="ui-mac.css">
+  <!-- 语言包必须赶在 app.js 之前：app.js 里 el()/toast() 生成文案时要用 t()。
+       放在 head 是有意的，它会同步读一次 i18n/<lang>.json（本地文件，几毫秒）。 -->
+  <script src="i18n.js"></script>
+  <!-- 外观页的 3D 库较大，空闲时先抓下来；进页面就不用等 -->
+  <link rel="prefetch" href="vendor/skinview3d.bundle.js">
+  <link rel="prefetch" href="img/background.png">
+</head>
+<body data-theme="light">
+<script>
+  // 必须在第一个元素之前跑：属性在解析阶段就落好，用户看不到「先 Windows 后 macOS」
+  // 那一下跳变。app.js 里的 initTheme / initUiSkin 只是把同一份状态再同步一次。
+  (function () {
+    try {
+      var ui = localStorage.getItem('mclab.ui');
+      if (ui === 'mac') { document.body.setAttribute('data-ui', 'mac'); }
+      var theme = localStorage.getItem('mclab.theme');
+      if (theme === 'dark' || theme === 'light') { document.body.setAttribute('data-theme', theme); }
+      var glass = localStorage.getItem('mclab.macGlass');
+      if (glass === '0') { document.body.classList.add('no-glass'); }
+    } catch (e) { /* localStorage 被禁就按默认走 */ }
+  })();
+</script>
+
+<!-- 内置背景图。固定在下层（z-index:-2），内容整体浮在上面。
+     上面盖一层可调的蒙层（--bg-shade）：亮色下提亮、暗色下压暗，
+     保证不管背景多亮多花，正文对比度都够。 -->
+<div class="app-bg" aria-hidden="true"></div>
+
+<!-- ============ 自绘标题栏 ============ -->
+<header class="titlebar">
+  <div class="tb-brand">
+    <!-- 动态星标：静态图是 exe / 系统图标，这里用会动的那张 -->
+    <img class="brand-mark" src="img/logo.gif" alt="">
+    <strong>HopeStar-MCLab</strong>
+  </div>
+  <div class="tb-drag"></div>
+  <div class="tb-actions">
+    <button class="icon-btn" id="btn-theme" title="切换主题">
+      <svg viewBox="0 0 24 24" class="icon-moon"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+      <svg viewBox="0 0 24 24" class="icon-sun"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM11 2h2v3h-2zm0 17h2v3h-2zM2 11h3v2H2zm17 0h3v2h-3zM4.2 5.6 5.6 4.2l2.1 2.1-1.4 1.4zm12.1 12.1 1.4-1.4 2.1 2.1-1.4 1.4zM4.2 18.4l2.1-2.1 1.4 1.4-2.1 2.1zM16.3 6.3l2.1-2.1 1.4 1.4-2.1 2.1z"/></svg>
+    </button>
+    <span class="tb-divider"></span>
+  </div>
+  <!-- 窗控：按 Windows 的习惯排「最小化 / 最大化 / 关闭」，关闭贴最右。
+       以前注释说顺序交给 CSS order，但那条规则根本没写，于是 DOM 里
+       关/最小/最大 直接渲染成了「× — □」，和所有 Windows 程序都反着。
+       真要支持 macOS 交通灯，再给 .tb-lights 加 order 覆盖，别改这里。 -->
+  <div class="tb-lights">
+    <button class="win-btn" id="win-min" title="最小化">
+      <svg viewBox="0 0 12 12"><path d="M2 6h8"/></svg>
+    </button>
+    <button class="win-btn" id="win-max" title="最大化">
+      <svg viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1"/></svg>
+    </button>
+    <button class="win-btn close" id="win-close" title="关闭">
+      <svg viewBox="0 0 12 12"><path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="desk-body">
+
+  <!-- ============ 侧栏（图标条 ⇄ 展开） ============ -->
+  <aside class="rail" id="rail">
+    <nav class="rail-nav">
+      <button class="rail-item on" data-page="home" title="主页">
+        <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span class="rail-label">主页</span>
+      </button>
+      <button class="rail-item" data-page="instances" title="实例">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v4H4zM4 11h16v4H4zM4 17h10v4H4z"/></svg>
+        <span class="rail-label">实例</span>
+      </button>
+      <button class="rail-item" data-page="lan" title="联机">
+        <svg viewBox="0 0 24 24"><path d="M6 12a2 2 0 1 1 4 0 2 2 0 0 1-4 0zm8-5a2 2 0 1 1 4 0 2 2 0 0 1-4 0zm0 10a2 2 0 1 1 4 0 2 2 0 0 1-4 0zM9.9 10.7l4.4-2.6.9 1.5-4.4 2.6zm0 2.6 4.4 2.6.9-1.5-4.4-2.6z"/></svg>
+        <span class="rail-label">联机</span>
+      </button>
+      <button class="rail-item" data-page="appearance" title="外观">
+        <svg viewBox="0 0 24 24"><path d="M9 3h6l1 4 4 2-2 4-2-1v9H8v-9l-2 1-2-4 4-2z"/></svg>
+        <span class="rail-label">外观</span>
+      </button>
+      <button class="rail-item" data-page="download" title="下载">
+        <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 17.8 6.1 10.9l1.4-1.4L11 13zM5 19h14v2H5z"/></svg>
+        <span class="rail-label">下载</span>
+      </button>
+      <button class="rail-item" data-page="toolbox" title="百宝箱">
+        <svg viewBox="0 0 24 24"><path d="M9 3h6a1 1 0 0 1 1 1v2h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4V4a1 1 0 0 1 1-1zm1 3h4V5h-4zM4 12h5v2h6v-2h5v5H4z"/></svg>
+        <span class="rail-label">百宝箱</span>
+      </button>
+      <button class="rail-item" data-page="settings" title="设置">
+        <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-.2 1.7 1.7 1.3-1.5 2.6-2-.8a7 7 0 0 1-1.5.9l-.3 2.1h-3l-.3-2.1a7 7 0 0 1-1.5-.9l-2 .8-1.5-2.6 1.7-1.3L3 12l.2-1.7L1.5 9 3 6.4l2 .8a7 7 0 0 1 1.5-.9L6.8 4h3l.3 2.1a7 7 0 0 1 1.5.9l2-.8L15 8.8l-1.7 1.3z"/></svg>
+        <span class="rail-label">设置</span>
+      </button>
+    </nav>
+
+    <div class="rail-foot">
+      <!-- 左下角账号 -->
+      <button class="account-chip" id="account-chip" title="账号管理">
+        <img class="avatar" id="chip-avatar" alt="">
+        <!-- 一个账号都没有时显示它，代替默认 Steve 头像 -->
+        <span class="avatar-empty" id="chip-avatar-empty" hidden
+              title="当前无可用账号，请添加一个">空</span>
+        <span class="chip-meta">
+          <strong id="chip-name">未登录</strong>
+          <span id="chip-channel">点击添加账号</span>
+        </span>
+      </button>
+      <button class="rail-item sm rail-toggle" id="rail-toggle" title="收起侧栏">
+        <svg viewBox="0 0 24 24" class="ico-collapse"><path d="M3 5h18v2H3zM3 11h12v2H3zM3 17h18v2H3zM19.6 10.3 22 12l-2.4 1.7z"/></svg>
+        <svg viewBox="0 0 24 24" class="ico-expand"><path d="M3 5h18v2H3zM3 11h12v2H3zM3 17h18v2H3zM15.4 10.3 13 12l2.4 1.7z"/></svg>
+        <span class="rail-label" id="rail-toggle-label">收起侧栏</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ============ 内容列 ============ -->
+  <main class="content">
+
+    <header class="page-head">
+      <div class="ph-icon" id="ph-icon"></div>
+      <div class="ph-text">
+        <div class="ph-title" id="ph-title">主页</div>
+      </div>
+      <div class="ph-acts">
+        <!-- 全站通用的「下载任务 / 进度」按钮：
+             平时显示「下载」；有下载任务时蓝色进度从左侧盖过来，文字换成百分比。点它打开任务小窗。
+             多任务时显示进度最高的那个，它结束就自动换下一个。 -->
+        <button class="dl-progress-btn" id="btn-refresh" title="下载任务">
+          <i class="dl-progress-fill" id="tb-progress-fill"></i>
+          <!-- 液滴加载动画（LiquidLoader 移植），只有任务在跑时显示 -->
+          <canvas class="dl-ring" id="tb-ring" aria-hidden="true"></canvas>
+          <span class="dl-progress-text" id="tb-progress-text">下载</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="page-body" id="page-body">
+
+      <!-- ================= 主页 ================= -->
+      <section class="page on" id="page-home">
+        <div class="hero" id="hero">
+          <img class="hero-icon" id="hero-icon" alt="">
+          <div class="hero-main">
+            <div class="hero-title-row">
+              <h2 id="hero-name">没有实例</h2>
+              <span class="badge" id="hero-loader">原版</span>
+              <span class="badge soft" id="hero-modpack" hidden>整合包</span>
+            </div>
+            <div class="hero-meta" id="hero-meta"></div>
+          </div>
+          <div class="hero-actions">
+            <button class="btn primary" id="btn-launch">启动游戏</button>
+            <button class="btn ghost" id="btn-folder">打开目录</button>
+          </div>
+        </div>
+
+        <div class="section-head" id="home-inst-head">
+          <h3>实例</h3>
+          <button class="btn ghost small" data-page="instances">查看全部</button>
+        </div>
+        <div class="grid instances" id="instance-grid"></div>
+
+        <div class="section-head">
+          <h3>动态</h3>
+        </div>
+        <div class="list" id="news-list">
+          <div class="empty">正在加载…</div>
+        </div>
+      </section>
+
+      <!-- ================= 账号 ================= -->
+      <section class="page" id="page-accounts">
+        <div class="section-head">
+          <h3>当前账号</h3>
+        </div>
+        <div class="account-hero card" id="account-hero">
+          <img class="account-avatar" id="account-avatar" alt="">
+          <span class="avatar-empty account-empty" id="account-avatar-empty" hidden
+                title="当前无可用账号，请添加一个">空</span>
+          <div class="account-info">
+            <h2 id="account-name">未登录</h2>
+            <p class="muted" id="account-channel">选择一个登录方式</p>
+            <p class="muted small" id="account-uuid"></p>
+          </div>
+          <div class="account-actions">
+            <button class="btn ghost" id="btn-account-appearance">更换外观</button>
+            <button class="btn ghost" id="btn-account-remove">删除账号</button>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h3>添加账号</h3>
+        </div>
+        <div class="grid three stagger">
+          <button class="login-card" data-login="offline">
+            <span class="login-ico"><svg viewBox="0 0 24 24"><path d="M12 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 10c4 0 7 1.8 7 4v2H5v-2c0-2.2 3-4 7-4z"/></svg></span>
+            <strong>离线登录</strong>
+            <span>只填用户名，不验证</span>
+          </button>
+          <button class="login-card" data-login="microsoft">
+            <span class="login-ico"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg></span>
+            <strong>微软登录</strong>
+            <span>正版账号，支持皮肤与披风</span>
+          </button>
+          <button class="login-card" data-login="authlib">
+            <span class="login-ico"><svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 1 5 5v2h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2h1V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v2h6V7a3 3 0 0 0-3-3zm0 9a2 2 0 0 0-1 3.7V19h2v-2.3A2 2 0 0 0 12 13z"/></svg></span>
+            <strong>外置认证</strong>
+            <span>LittleSkin 等 authlib-injector 皮肤站</span>
+          </button>
+        </div>
+
+        <div class="section-head">
+          <h3>全部账号</h3>
+        </div>
+        <div class="account-list" id="account-list"></div>
+      </section>
+
+      <!-- ================= 外观 ================= -->
+      <!-- ================= 实例管理（从实例列表点进来） ================= -->
+      <section class="page" id="page-instance">
+        <div class="inst-hero card">
+          <button class="icon-btn inst-back" id="inst-back" title="返回实例列表">←</button>
+          <img class="inst-icon-lg" id="inst-icon" alt="">
+          <div class="inst-hero-main">
+            <h2 id="inst-title">实例</h2>
+            <p class="inst-sub" id="inst-sub"></p>
+          </div>
+          <div class="inst-hero-actions">
+            <button class="btn ghost" id="inst-test" title="带 testMode 启动：不写启动记录，用来验证这个实例能不能起来">测试启动</button>
+            <button class="btn ghost" id="inst-explore">探索<span class="caret">▾</span></button>
+            <button class="btn ghost" id="inst-manage">管理<span class="caret">▾</span></button>
+            <button class="btn primary" id="inst-launch">启动游戏</button>
+          </div>
+        </div>
+
+        <!-- 上次启动崩过就在这里提示一次，点开看分析 -->
+        <div class="inst-banner" id="inst-crash-bar" hidden>
+          <span class="ib-dot"></span>
+          <div class="ib-main">
+            <div class="ib-title" id="inst-crash-title">上次启动崩溃了</div>
+            <div class="ib-sub" id="inst-crash-sub"></div>
+          </div>
+          <button class="btn ghost small" id="inst-crash-view">查看分析</button>
+          <button class="icon-btn" id="inst-crash-close" title="这次先不看">✕</button>
+        </div>
+
+        <!-- 整合包有新版本。和崩溃条同一个模样，只是换成蓝色 -->
+        <div class="inst-banner update" id="inst-update-bar" hidden>
+          <span class="ib-dot"></span>
+          <div class="ib-main">
+            <div class="ib-title" id="inst-update-title">整合包有新版本</div>
+            <div class="ib-sub" id="inst-update-sub"></div>
+          </div>
+          <button class="btn ghost small" id="inst-update-apply">更新</button>
+          <button class="icon-btn" id="inst-update-close" title="这次先不看">✕</button>
+        </div>
+
+        <nav class="settings-nav" id="inst-nav">
+          <button class="on" data-itab="settings">设置</button>
+          <button data-itab="theme">主题</button>
+          <button data-itab="installers">加载器</button>
+          <button data-itab="mod">模组</button>
+          <button data-itab="resourcepack">资源包</button>
+          <button data-itab="shader">光影</button>
+          <button data-itab="world">世界</button>
+          <button data-itab="screenshot">截图</button>
+          <button class="inst-check-upd" id="inst-check-upd" title="按文件指纹到 Modrinth / CurseForge 反查新版本">检查更新</button>
+        </nav>
+
+        <section class="settings-group" id="itab-settings">
+          <div class="card">
+            <div class="set-row readonly">
+              <span class="k">游戏版本</span><span class="v" id="inst-version"></span>
+            </div>
+            <div class="set-row readonly">
+              <span class="k">加载器</span><span class="v" id="inst-loader"></span>
+            </div>
+            <div class="set-row readonly">
+              <span class="k">游戏目录</span><span class="v mono" id="inst-dir"></span>
+            </div>
+
+            <div class="set-divider"></div>
+            <div class="inst-inherit" id="inst-inherit-hint">这个实例还没有独立设置，下面显示的都来自全局设置</div>
+
+            <label class="set-row">
+              <span class="k">自动分配内存</span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-auto-memory"></span>
+            </label>
+            <div class="mem-panel" id="inst-row-memory">
+              <div class="mem-head">
+                <span class="mem-title">最大内存</span>
+                <span class="mem-value" id="inst-mem-max-value">—</span>
+              </div>
+              <input type="range" class="mem-range" id="inst-mem-max-range" min="1" max="49" step="1" value="13">
+
+              <div class="mem-bar" id="inst-mem-bar">
+                <i class="mem-seg used" id="inst-mem-seg-used"></i>
+                <i class="mem-seg game" id="inst-mem-seg-game"></i>
+                <i class="mem-seg free" id="inst-mem-seg-free"></i>
+              </div>
+              <div class="mem-legend">
+                <span><i class="dot used"></i>已用 <b id="inst-mem-used-text">—</b></span>
+                <span><i class="dot game"></i>游戏分配 <b id="inst-mem-game-text">—</b></span>
+                <span><i class="dot free"></i>空闲 <b id="inst-mem-free-text">—</b></span>
+              </div>
+              <div class="mem-warn" id="inst-mem-warn" hidden></div>
+            </div>
+            <div class="set-row">
+              <span class="k">JVM 参数</span>
+              <span class="v"><textarea class="dlc-input param-area" id="inst-jvm" rows="3" spellcheck="false" placeholder="留空表示用全局，每行一条"></textarea></span>
+            </div>
+            <div class="set-row">
+              <span class="k">游戏窗口</span>
+              <span class="v">
+                <select class="ad-select" id="inst-window-type">
+                  <option value="windowed">窗口化</option>
+                  <option value="fullscreen">全屏</option>
+                  <option value="maximized">最大化</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row" id="inst-row-size">
+              <span class="k">窗口尺寸</span>
+              <span class="v memory-row">
+                <input class="set-num" type="number" min="320" step="10" id="inst-width">
+                <span class="dash">×</span>
+                <input class="set-num" type="number" min="240" step="10" id="inst-height">
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">游戏参数</span>
+              <span class="v"><textarea class="dlc-input param-area" id="inst-game-args" rows="3" spellcheck="false" placeholder="留空表示用全局，每行一条"></textarea></span>
+            </div>
+
+            <div class="set-divider"></div>
+            <h5 class="set-subtitle">Java</h5>
+            <div class="set-row">
+              <span class="k">Java 环境</span>
+              <span class="v">
+                <select class="ad-select" id="inst-java-type">
+                  <option value="auto">自动选择</option>
+                  <option value="custom">自定义路径</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row" id="inst-row-java-path">
+              <span class="k">Java 路径</span>
+              <span class="v"><input class="dlc-input" id="inst-java-path" spellcheck="false" placeholder="留空表示跟随全局"></span>
+            </div>
+
+            <div class="set-divider"></div>
+            <h5 class="set-subtitle">启动</h5>
+            <div class="set-row">
+              <span class="k">运行目录<span class="sub">留空表示用版本目录</span></span>
+              <span class="v"><input class="dlc-input mono" id="inst-running-dir" spellcheck="false" placeholder="留空表示跟随全局"></span>
+            </div>
+            <div class="set-row">
+              <span class="k">进程优先级</span>
+              <span class="v">
+                <select class="ad-select" id="inst-priority">
+                  <option value="low">低</option>
+                  <option value="below_normal">低于普通</option>
+                  <option value="normal">普通</option>
+                  <option value="above_normal">高于普通</option>
+                  <option value="high">高</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">启动后启动器</span>
+              <span class="v">
+                <select class="ad-select" id="inst-launcher-visibility">
+                  <option value="hide">隐藏</option>
+                  <option value="close">关闭</option>
+                  <option value="keep">保留</option>
+                  <option value="hide_and_reopen">隐藏，游戏退出后重新打开</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">快速游玩</span>
+              <span class="v">
+                <select class="ad-select" id="inst-quick-play">
+                  <option value="none">关闭</option>
+                  <option value="singleplayer">直接进入存档</option>
+                  <option value="multiplayer">直接连接服务器</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row" id="inst-row-quick-sp">
+              <span class="k">存档名</span>
+              <span class="v"><select class="ad-select" id="inst-quick-sp"></select></span>
+            </div>
+            <div class="set-row" id="inst-row-quick-mp">
+              <span class="k">服务器地址</span>
+              <span class="v"><input class="dlc-input" id="inst-quick-mp" spellcheck="false" placeholder="example.com:25565"></span>
+            </div>
+
+            <div class="set-divider"></div>
+            <h5 class="set-subtitle">检查与启动参数</h5>
+            <label class="set-row">
+              <span class="k">不检查 JVM 兼容性<span class="sub">启动失败常见于这一步，出问题时可以跳过</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-not-check-jvm"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">不检查游戏文件完整性</span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-not-check-game"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">不使用 javaw<span class="sub">改用 java，会带一个控制台窗口，方便看日志</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-not-use-javaw"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">不添加 JVM 参数</span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-no-jvm-options"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">不添加优化参数<span class="sub">G1GC、内存相关的那一批</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-no-opt-jvm-options"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">允许自动安装 Java Agent</span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-allow-auto-agent"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">不自动修改游戏设置<span class="sub">options.txt 里的语言、难度等</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="inst-disable-auto-game-options"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-group" id="itab-theme" hidden>
+          <div class="card theme-card">
+            <div class="set-head">
+              <span>实例主题</span>
+              <span class="theme-hint">只影响这个实例，其它实例不受影响</span>
+            </div>
+
+            <!-- 这个实例不是首页选中的那个时出现：主题色只铺在选中的实例上，
+                 在这里改完看不到变化会以为坏了，先说清楚 -->
+            <div class="theme-hint theme-owner-hint" id="theme-owner-hint" hidden>
+              这个实例不是当前选中的实例：改主题色不会改变启动器外观，在实例列表里「设为当前」后才生效。
+            </div>
+
+            <div class="theme-block">
+              <div class="theme-block-title">实例图标</div>
+              <div class="theme-icon-row">
+                <img class="theme-icon" id="theme-icon-preview" alt="">
+                <div class="theme-icon-actions">
+                  <button class="btn ghost small" id="theme-icon-pick">换一张图片…</button>
+                  <button class="btn ghost small" id="theme-icon-reset">恢复默认</button>
+                  <p class="theme-hint">显示在实例列表、首页卡片和窗口标题栏。支持 png / jpg / webp。</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="theme-block">
+              <div class="theme-block-title">启动器外观</div>
+              <label class="theme-switch">
+                <input type="checkbox" id="theme-launcher-on">
+                <span>把这个主题应用到整个启动器（图标、标题、背景、主题色）</span>
+              </label>
+              <div class="theme-launcher-fields" id="theme-launcher-fields" hidden>
+                <div class="theme-launcher-icon">
+                  <img id="theme-launcher-icon-preview" alt="">
+                  <div class="theme-launcher-icon-actions">
+                    <button class="btn ghost small" id="theme-launcher-icon-pick">换图标…</button>
+                    <button class="btn ghost small" id="theme-launcher-icon-reset">恢复默认</button>
+                  </div>
+                </div>
+                <div class="mp-row">
+                  <label>标题名</label>
+                  <input class="mp-input" id="theme-launcher-title" placeholder="HopeStar-MCLab">
+                </div>
+                <p class="theme-hint">
+                  只改界面左上角的图标和标题，不动 exe 和系统图标。关掉开关，启动器立刻恢复原样。
+                </p>
+              </div>
+            </div>
+
+            <div class="theme-block">
+              <div class="theme-block-title">主题色</div>
+              <div class="theme-color-row">
+                <canvas id="theme-wheel" width="152" height="152" class="theme-wheel"></canvas>
+                <div class="theme-color-side">
+                  <div class="theme-color-preview" id="theme-color-preview"></div>
+                  <input class="theme-color" id="theme-accent" maxlength="7" placeholder="#5b7cfa">
+                  <div class="theme-swatches" id="theme-swatches"></div>
+                  <p class="theme-hint">在色环上点一下取色，也可以直接填 #RRGGBB。</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="theme-block">
+              <div class="theme-block-title">背景图</div>
+              <div class="theme-bg-row">
+                <div class="theme-bg-preview" id="theme-bg-preview">
+                  <span class="theme-bg-empty">没有背景图</span>
+                </div>
+                <div class="theme-bg-actions">
+                  <button class="btn ghost small" id="theme-bg-pick">选背景图…</button>
+                  <button class="btn ghost small" id="theme-bg-clear">移除</button>
+                  <p class="theme-hint">铺在启动器背景和实例页顶部卡片上，压一层遮罩保证可读性。</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="theme-block">
+              <div class="theme-block-title">游戏窗口标题</div>
+              <input class="mp-input" id="theme-title" placeholder="留空用游戏默认标题">
+              <p class="theme-hint">
+                启动游戏后，Minecraft 窗口标题栏显示这段文字。可以用 <code>{version}</code> 代表游戏版本。
+                留空则保持游戏原样（Minecraft 1.21.1）。
+              </p>
+            </div>
+
+            <div class="theme-actions">
+              <button class="btn primary" id="theme-save">保存</button>
+              <span class="theme-hint" id="theme-status"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-group" id="itab-installers" hidden>
+          <div class="card">
+            <div class="set-head">
+              <span>已安装的加载器</span>
+              <button class="btn ghost small" id="inst-installer-add">安装 / 更换加载器</button>
+            </div>
+            <div class="inst-list" id="inst-installer-list"></div>
+          </div>
+        </section>
+
+        <section class="settings-group" id="itab-content" hidden>
+          <div class="card">
+            <div class="set-head">
+              <span id="inst-content-title">内容</span>
+              <button class="btn ghost small" id="inst-content-folder">打开文件夹</button>
+            </div>
+            <div class="inst-banner warn" id="inst-scan-bar" hidden>
+              <span class="ib-dot"></span>
+              <div class="ib-main">
+                <div class="ib-title" id="inst-scan-title"></div>
+                <div class="ib-sub" id="inst-scan-sub"></div>
+              </div>
+              <button class="btn ghost small" id="inst-scan-view">看详情</button>
+            </div>
+            <!-- 搜索 / 排序 / 批量。只对模组、资源包、光影显示：
+                 世界和截图走另外两条渲染路径，没有启用状态也没有批量删除的意义。 -->
+            <div class="inst-tools" id="inst-content-tools" hidden>
+              <input type="search" class="text-input inst-search" id="inst-content-search" placeholder="搜索名称…">
+              <select class="ad-select inst-sort" id="inst-content-sort" title="排序方式">
+                <option value="name">按名称</option>
+                <option value="size">按大小</option>
+                <option value="time">按修改时间</option>
+                <option value="state">按启用状态</option>
+              </select>
+              <button class="btn ghost small" id="inst-content-batch">批量</button>
+              <span class="inst-count" id="inst-content-count"></span>
+            </div>
+            <div class="inst-tools batch" id="inst-batch-bar" hidden>
+              <button class="btn ghost small" id="inst-batch-all">全选</button>
+              <button class="btn ghost small" id="inst-batch-enable">启用</button>
+              <button class="btn ghost small" id="inst-batch-disable">禁用</button>
+              <button class="btn ghost small danger" id="inst-batch-delete">删除</button>
+              <span class="inst-count" id="inst-batch-count"></span>
+              <button class="btn ghost small" id="inst-batch-exit">退出批量</button>
+            </div>
+            <div class="inst-list" id="inst-content-list"></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="page" id="page-appearance">
+        <div class="appearance">
+          <div class="ap-left">
+            <div class="preview-slot" id="preview-slot">
+              <!-- 两条渲染路径，谁可用用谁：
+                   JavaFX WebView 模式用 Java 侧出的 PNG（img，默认可见）；
+                   Tauri 壳模式用 skinview3d 实时渲染（canvas，默认可不显示）。
+                   切换由 app.js 的 setupViewer 决定。 -->
+              <img id="ap-preview" alt="皮肤预览">
+              <canvas id="ap-preview-3d" hidden></canvas>
+              <!-- 滚轮缩放时闪一下的百分比徽标 -->
+              <div class="preview-zoom" id="preview-zoom" hidden></div>
+              <!-- 复位机位：平时半透明藏着，鼠标放上去才亮起来 -->
+              <button class="preview-reset" id="ap-reset-view" title="复位视角" aria-label="复位视角">↺</button>
+            </div>
+            <div class="ap-side">
+              <!-- 模型 / 动作 / 披风三组开关按「标签 + 控件」逐行排：
+                   以前三组 seg 平铺换行，靠一条竖线分隔，窄侧栏里会看成四连按钮。
+                   动作与披风两组只在能真渲染的时候才出现（JavaFX 模式是静态 PNG）。 -->
+              <div class="ap-controls">
+                <div class="ap-row">
+                  <span class="ap-row-label">模型</span>
+                  <div class="seg" id="model-seg">
+                    <button data-model="default">宽体</button>
+                    <button data-model="slim">纤体</button>
+                  </div>
+                </div>
+                <div class="ap-row" id="ap-anim-row" hidden>
+                  <span class="ap-row-label">动作</span>
+                  <div class="seg" id="anim-seg" hidden>
+                    <button data-anim="idle">站立</button>
+                    <button data-anim="walk">行走</button>
+                  </div>
+                </div>
+                <!-- 披风 / 鞘翅：游戏里鞘翅就是用披风那张贴图渲的（skinview3d 的
+                     backEquipment）。皮肤页和披风页都显示，前提是真的戴着披风 -->
+                <div class="ap-row" id="ap-back-row" hidden>
+                  <span class="ap-row-label">披风</span>
+                  <div class="seg" id="back-seg" hidden>
+                    <button data-back="cape">披风</button>
+                    <button data-back="elytra">鞘翅</button>
+                  </div>
+                </div>
+                <!-- 盔甲总开关：和上面三组同一套 seg，不打开时四件装备完全不参与渲染，
+                     下面的格子也不出现，避免「选了半天没反应」 -->
+                <div class="ap-row" id="ap-armor-on-row">
+                  <span class="ap-row-label">盔甲</span>
+                  <div class="seg" id="armor-seg">
+                    <button data-armor="off" class="active">不显示</button>
+                    <button data-armor="on">显示</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 盔甲：四个槽各一件，点开图标选。未选择时是虚线空框（和
+                   无账号头像同一套视觉）。只在壳模式出现：JavaFX 那边是
+                   后端渲染的静态 PNG，套不上盔甲。 -->
+              <div class="ap-armor" id="ap-armor-row" hidden>
+                <button class="armor-cell" data-slot="helmet" title="头盔">
+                  <img alt="" hidden><span class="ac-empty">空</span>
+                </button>
+                <button class="armor-cell" data-slot="chest" title="胸甲">
+                  <img alt="" hidden><span class="ac-empty">空</span>
+                </button>
+                <button class="armor-cell" data-slot="legs" title="护腿">
+                  <img alt="" hidden><span class="ac-empty">空</span>
+                </button>
+                <button class="armor-cell" data-slot="boots" title="靴子">
+                  <img alt="" hidden><span class="ac-empty">空</span>
+                </button>
+              </div>
+              <button class="btn primary block" id="ap-apply">应用到账号</button>
+              <p class="muted small" id="ap-hint"></p>
+            </div>
+          </div>
+
+          <div class="ap-right">
+            <div class="tabs">
+              <button class="tab active" data-tab="skin">皮肤</button>
+              <button class="tab" data-tab="cape">披风</button>
+              <span class="tab-spacer"></span>
+              <button class="btn ghost small" id="ap-import">导入文件</button>
+            </div>
+            <div class="asset-head">
+              <span id="asset-head-label">皮肤库</span>
+              <span class="asset-count" id="asset-head-count"></span>
+            </div>
+            <div class="asset-grid" id="asset-grid"></div>
+            <p class="muted small" id="ap-tip"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 实例 ================= -->
+      <section class="page" id="page-instances">
+        <div class="section-head">
+          <h3>全部实例</h3>
+          <div class="head-actions">
+            <button class="btn ghost small" id="btn-import-zip"
+                    title="选一个 .zip / .mrpack，自动识别是实例、存档、资源包还是整合包">
+              导入压缩包
+            </button>
+            <button class="btn ghost small" id="btn-import-dir" title="选一个已有的 .minecraft 目录导进来">
+              导入游戏目录
+            </button>
+          </div>
+        </div>
+        <div class="table" id="instance-table"></div>
+      </section>
+
+      <!-- ================= 联机 =================
+           托管用户自己下载的「陶瓦联机」。开房 / 加入 / 退出都在这里完成：
+           启动器只调陶瓦的本地 HTTP 接口，不 patch 它、不用它的窗口。
+           卡片固定宽度居中，不拉满整页——这一页的信息量撑不起全宽。 -->
+      <section class="page" id="page-lan">
+        <div class="lan-wrap">
+          <div class="card lan-card">
+            <div class="lan-head">
+              <p class="lan-hint" id="lan-hint"></p>
+              <span class="lan-badge" id="lan-badge">未加载</span>
+            </div>
+
+            <div class="lan-actions">
+              <button class="btn primary" id="lan-install">下载联机模块</button>
+              <button class="btn primary" id="lan-start">启动联机核心</button>
+              <button class="btn primary" id="lan-host">创建房间</button>
+              <input class="lan-input" id="lan-room-input" placeholder="房间码" maxlength="12"
+                     title="房主给你的那串房间码">
+              <button class="btn ghost" id="lan-join">加入房间</button>
+              <button class="btn ghost" id="lan-idle">退出房间</button>
+            </div>
+
+            <div class="lan-room" id="lan-room" hidden>
+              <span class="lan-k">房间码</span>
+              <strong class="lan-room-code" id="lan-room-code"></strong>
+              <button class="btn ghost small" id="lan-copy">复制</button>
+            </div>
+
+            <div class="lan-players" id="lan-players" hidden></div>
+          </div>
+
+          <!-- 致谢单独成块：说明这一页的联机能力从哪里来，和上面的操作分区 -->
+          <div class="card lan-credit">
+            <div class="lan-credit-text">
+              <p class="lan-credit-title">本启动器的联机服务来自 Terracotta | 陶瓦联机</p>
+              <p class="lan-credit-desc">
+                由 burningtnt 开发，AGPL-3.0 授权。启动器只调用它自己的接口，不修改它，也不随发行版分发。
+              </p>
+              <a class="credit-link lan-credit-link"
+                 data-url="https://github.com/burningtnt/Terracotta">github.com/burningtnt/Terracotta</a>
+            </div>
+            <button class="btn ghost" id="lan-download">打开发布页</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 下载 ================= -->
+      <section class="page" id="page-download">
+        <!-- 下载页六个分类。游戏版本走 Mojang 清单，其余走 Modrinth -->
+        <div class="dl-tabs" id="dl-tabs">
+          <button data-dltab="game" class="on">游戏版本</button>
+          <button data-dltab="modpack">整合包</button>
+          <button data-dltab="mod">模组</button>
+          <button data-dltab="resourcepack">资源包</button>
+          <button data-dltab="shader">光影</button>
+          <button data-dltab="world">世界</button>
+        </div>
+
+        <div class="dl-pane" id="dl-pane-game">
+          <div class="dl-toolbar">
+            <div class="seg" id="dl-filter">
+              <button data-filter="release" class="active">正式版</button>
+              <button data-filter="all">全部</button>
+              <button data-filter="snapshot">快照</button>
+              <button data-filter="old">远古</button>
+            </div>
+            <input class="dl-search" id="dl-search" type="text" placeholder="搜索版本号，例如 1.21.4" spellcheck="false">
+            <select class="ad-select" id="dl-source" title="版本清单来源">
+              <option value="official">官方源</option>
+              <option value="mirror">BMCLAPI 镜像</option>
+            </select>
+            <!-- 每页条数：清单 1100+ 条，滚起来累；给人一个按自己屏幕高度调的口子 -->
+            <select class="ad-select" id="dl-page-size" title="每页显示多少个版本">
+              <option value="20">每页 20</option>
+              <option value="50">每页 50</option>
+              <option value="100" selected>每页 100</option>
+              <option value="150">每页 150</option>
+              <option value="200">每页 200</option>
+            </select>
+            <span class="muted small" id="dl-count"></span>
+            <button class="kbd-btn" id="dl-refresh" title="重新拉取版本清单">
+              <svg viewBox="0 0 24 24"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+              <span>刷新</span>
+            </button>
+          </div>
+
+          <div class="dl-list" id="dl-list">
+            <div class="empty">正在从 Mojang 拉取版本清单…</div>
+          </div>
+
+          <!-- 版本清单 1100+ 条，一页 100 条；只有一页时整条隐藏 -->
+          <div class="ad-pager" id="dl-pager" hidden>
+            <button class="btn ghost" id="dl-prev">上一页</button>
+            <span class="muted small" id="dl-page-label"></span>
+            <button class="btn ghost" id="dl-next">下一页</button>
+          </div>
+        </div>
+
+        <div class="dl-pane" id="dl-pane-addon" hidden>
+          <!-- 全部挤一行。宽度不够时（<1200 窗口）会自然换行，但优先级是
+               搜索框先缩，缩到下限还放不下才折行。 -->
+          <div class="dl-toolbar">
+            <input class="dl-search" id="ad-search" type="text" placeholder="搜索名称…" spellcheck="false">
+            <!-- 类别：两家平台各一套，选项由 onAddonCategories 按当前平台填。
+                 原来是一整块 chips 铺三四行，把首屏挤没了，改成一个下拉。 -->
+            <select class="ad-select" id="ad-cat" title="类别">
+              <option value="">全部类别</option>
+            </select>
+            <button class="kbd-btn" id="ad-reset" title="重置搜索：清空关键词，恢复默认来源与全部类别">
+              <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+              <span>重置</span>
+            </button>
+            <select class="ad-select" id="ad-sort" title="排序方式">
+              <option value="relevancy">相关性</option>
+              <option value="downloads">下载量</option>
+              <option value="updated">最近更新</option>
+              <option value="new">最新发布</option>
+            </select>
+            <!-- 模组 / 资源包 / 光影要落到具体实例，整合包和世界不需要 -->
+            <select class="ad-select" id="ad-instance" title="目标实例" hidden></select>
+            <select class="ad-select" id="ad-source" title="内容平台">
+              <option value="modrinth">Modrinth</option>
+              <option value="curseforge">CurseForge</option>
+            </select>
+            <span class="muted small" id="ad-count"></span>
+            <button class="kbd-btn" id="ad-import" title="从本地文件导入">
+              <svg viewBox="0 0 24 24"><path d="M11 3h2v9.1l3.3-3.3 1.4 1.4L12 16.2 6.3 10.2l1.4-1.4L11 12.1zM4 18h16v2.4H4z"/></svg>
+              <span id="ad-import-label">导入</span>
+            </button>
+          </div>
+
+          <div class="ad-grid" id="ad-grid">
+            <div class="empty">选择上方分类开始浏览</div>
+          </div>
+
+          <div class="ad-pager" id="ad-pager" hidden>
+            <button class="btn ghost" id="ad-prev">上一页</button>
+            <span class="muted small" id="ad-page-label"></span>
+            <button class="btn ghost" id="ad-next">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 设置 ================= -->
+      <!-- ================= 百宝箱 ================= -->
+      <section class="page" id="page-toolbox">
+        <div class="section-head">
+          <h3>自定义下载</h3>
+        </div>
+        <div class="card pad">
+
+          <div class="set-row">
+            <span class="k">下载地址</span>
+            <span class="v">
+              <input class="dlc-input" id="tb-url" spellcheck="false"
+                     placeholder="https://example.com/file.zip 或 GitHub 链接">
+            </span>
+          </div>
+          <p class="url-hint" id="tb-url-hint"></p>
+          <div class="set-row">
+            <span class="k">保存到</span>
+            <span class="v tb-dir-row">
+              <input class="dlc-input mono" id="tb-dir" spellcheck="false" placeholder="留空则存到 .hmcl/downloads">
+              <button class="btn ghost small" id="tb-pick-dir">浏览</button>
+            </span>
+          </div>
+          <div class="set-row">
+            <span class="k">文件名<span class="sub">留空则从地址里取</span></span>
+            <span class="v"><input class="dlc-input" id="tb-name" spellcheck="false" placeholder="自动"></span>
+          </div>
+          <div class="set-row">
+            <span class="k">线程数</span>
+            <span class="v">
+              <select class="ad-select" id="tb-threads">
+                <option value="1">1</option>
+                <option value="4">4</option>
+                <option value="8" selected>8</option>
+                <option value="16">16</option>
+              </select>
+            </span>
+          </div>
+
+          <div class="tb-actions">
+            <button class="btn primary" id="tb-start">开始下载</button>
+            <button class="btn ghost" id="tb-open-folder">打开保存位置</button>
+          </div>
+
+          <div class="mem-bar tb-bar">
+            <i class="mem-seg used" id="tb-fill"></i>
+          </div>
+          <div class="mem-legend">
+            <span id="tb-stage">还没有开始</span>
+            <span class="tb-right" id="tb-percent"></span>
+          </div>
+
+          <!-- GitHub 镜像：默认收起，展开后手动测速，测出来才可以选 -->
+          <div class="mirror-fold" id="mirror-fold">
+            <button class="mirror-fold-head" id="mirror-fold-toggle" type="button">
+              <span class="mf-title">GitHub 镜像加速</span>
+              <span class="mf-sub" id="mirror-fold-sub">未测速，直连下载</span>
+              <span class="mf-chev">▾</span>
+            </button>
+            <div class="mirror-fold-body" id="mirror-fold-body" hidden>
+              <div class="mirror-bar">
+                <button class="btn ghost small" id="mirror-test">测速</button>
+                <span class="muted small" id="mirror-state"></span>
+                <span class="mirror-count" id="mirror-count"></span>
+              </div>
+              <div class="mirror-grid" id="mirror-grid"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <h3>清理</h3>
+        </div>
+        <div class="card pad">
+          <p class="muted small tb-tip">
+            清掉实例的日志、崩溃报告、natives 和启动器缓存；不动游戏核心文件。
+          </p>
+          <div class="tb-actions">
+            <button class="btn primary" id="tb-clean">开始清理</button>
+            <span class="muted small" id="tb-clean-result"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="page-settings">
+        <!-- 分区导航：吸顶，点一下平滑滚到对应板块 -->
+        <nav class="settings-nav" id="settings-nav">
+          <button class="on" data-anchor="set-launcher">
+            <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-.2 1.7 1.7 1.3-1.5 2.6-2-.8a7 7 0 0 1-1.5.9l-.3 2.1h-3l-.3-2.1a7 7 0 0 1-1.5-.9l-2 .8-1.5-2.6 1.7-1.3L3 12l.2-1.7L1.5 9 3 6.4l2 .8a7 7 0 0 1 1.5-.9L6.8 4h3l.3 2.1a7 7 0 0 1 1.5.9l2-.8L15 8.8l-1.7 1.3z"/></svg>
+            <span>启动器</span>
+          </button>
+          <button data-anchor="set-appearance">
+            <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.6-.3-1.2-.7-1.6-.3-.4-.3-1 0-1.4.3-.4.8-.4 1.2-.4H16a5 5 0 0 0 0-10zm-5.5 7.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3.5-3.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4.5.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+            <span>外观</span>
+          </button>
+          <button data-anchor="set-java">
+            <svg viewBox="0 0 24 24"><path d="M9 3h6v2H9zm-2 4h10a1 1 0 0 1 1 1v2H6V8a1 1 0 0 1 1-1zm-1 5h12v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2zm2-11h2v2H8z"/></svg>
+            <span>Java</span>
+          </button>
+          <button data-anchor="set-game">
+            <svg viewBox="0 0 24 24"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg>
+            <span>游戏</span>
+          </button>
+          <button data-anchor="set-network">
+            <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 17.8 6.1 10.9l1.4-1.4L11 13zM5 19h14v2H5z"/></svg>
+            <span>下载</span>
+          </button>
+          <button data-anchor="set-about">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm2 12h-4v-2h1v-4h-1v-2h3v6h1z"/></svg>
+            <span>关于</span>
+          </button>
+        </nav>
+
+        <section class="settings-group" id="set-launcher">
+          <h4>启动器</h4>
+          <div class="card">
+            <div class="set-row">
+              <span class="k">语言</span>
+              <span class="v"><select class="ad-select" id="set-language"></select></span>
+            </div>
+            <label class="set-row">
+              <span class="k">接受预览版更新<span class="sub">比正式版新，可能不稳定</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-accept-preview"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">有新版本时自动提示</span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-auto-update-dialog"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">界面动画<span class="sub">关闭后切换页面、弹窗都直接出现</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-animation"></span>
+            </label>
+            <div class="set-row" id="set-anim-speed-row">
+              <span class="k">动画速度<span class="sub">只影响过渡和弹出动画，不影响下载进度</span></span>
+              <span class="v">
+                <div class="seg" id="set-anim-speed">
+                  <button data-speed="elegant">优雅</button>
+                  <button data-speed="balanced">均衡</button>
+                  <button data-speed="fast" class="active">极速</button>
+                </div>
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">日志行数</span>
+              <span class="v"><input class="set-num" type="number" min="100" max="10000" step="100" id="set-log-lines" placeholder="默认"></span>
+            </div>
+            <div class="set-row">
+              <span class="k">日志保留份数<span class="sub">只保留最近这么多份日志文件，启动器退出时清理</span></span>
+              <span class="v"><input class="set-num" type="number" min="1" max="365" id="set-log-retention"></span>
+            </div>
+
+            <label class="set-row">
+              <span class="k">退出后自动备份存档<span class="sub">仅备份本次启动期间修改过的世界</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-auto-backup"></span>
+            </label>
+            <div class="set-row" id="set-backup-keep-row">
+              <span class="k">备份保留份数<span class="sub">每个存档保留最近若干份，手动备份不受影响</span></span>
+              <span class="v"><input class="set-num" type="number" min="1" max="50" id="set-backup-keep"></span>
+            </div>
+
+            <div class="set-row">
+              <span class="k">迁移旧启动器<span class="sub">换目录不用重新登录，账号和皮肤从老地方搬过来</span></span>
+              <span class="v">
+                <button class="btn ghost small" id="set-migrate">选个旧目录</button>
+              </span>
+            </div>
+
+            <div class="set-row">
+              <span class="k">界面缓存<span class="sub">网页内核攒的缓存，删了不影响账号和游戏</span></span>
+              <span class="v">
+                <button class="btn ghost small" id="set-clean-webview">清理</button>
+              </span>
+            </div>
+
+            <div class="set-row">
+              <span class="k">启动器日志<span class="sub">出问题时把这里的文件发给开发者</span></span>
+              <span class="v log-actions">
+                <button class="btn ghost small" id="set-open-log">打开日志目录</button>
+                <button class="btn ghost small" id="set-export-log">导出日志</button>
+              </span>
+            </div>
+            <div class="set-row readonly">
+              <span class="k">版本</span>
+              <span class="v" id="set-launcher-version"></span>
+            </div>
+            <div class="set-row readonly">
+              <span class="k">运行环境</span>
+              <span class="v" id="set-env"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-group" id="set-appearance">
+          <h4>外观</h4>
+          <div class="card">
+            <div class="kv">
+              <span class="k">主题</span>
+              <span class="v">
+                <span class="seg" id="theme-seg">
+                  <button data-theme-set="light">浅色</button>
+                  <button data-theme-set="dark">深色</button>
+                </span>
+              </span>
+            </div>
+            <div class="kv">
+              <span class="k">界面风格<span class="sub">macOS 风格用红黄绿窗控和半透明侧栏，只换皮不改布局</span></span>
+              <span class="v">
+                <span class="seg" id="ui-seg">
+                  <button data-ui-set="win">Windows</button>
+                  <button data-ui-set="mac">macOS</button>
+                </span>
+              </span>
+            </div>
+            <label class="kv" id="mac-glass-row">
+              <span class="k">半透明材质<span class="sub">关掉后标题栏与侧栏变成纯色，老显卡或远程桌面更跟手</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-mac-glass"></span>
+            </label>
+            <div class="kv">
+              <span class="k">侧栏</span>
+              <span class="v">
+                <span class="seg" id="rail-seg">
+                  <button data-rail-set="open">展开</button>
+                  <button data-rail-set="closed">收起</button>
+                </span>
+              </span>
+            </div>
+
+            <div class="kv">
+              <span class="k">配件配色<span class="sub">标题、按钮、选中态的主色</span></span>
+              <span class="v">
+                <span class="accent-swatches" id="accent-swatches">
+                  <button class="sw" data-accent-h="150" data-accent-l="42" data-accent-s="56" title="松绿（默认）" style="--sw: hsl(150 56% 42%)"></button>
+                  <button class="sw" data-accent-h="228" data-accent-l="62" title="靛蓝" style="--sw: hsl(228 86% 62%)"></button>
+                  <button class="sw" data-accent-h="199" data-accent-l="52" title="天青" style="--sw: hsl(199 89% 52%)"></button>
+                  <button class="sw" data-accent-h="38" data-accent-l="52" title="琥珀" style="--sw: hsl(38 92% 52%)"></button>
+                  <button class="sw" data-accent-h="330" data-accent-l="60" title="玫红" style="--sw: hsl(330 81% 60%)"></button>
+                  <button class="sw" data-accent-h="262" data-accent-l="65" title="紫罗兰" style="--sw: hsl(262 83% 65%)"></button>
+                </span>
+              </span>
+            </div>
+
+            <div class="accent-picker" id="accent-picker">
+              <!-- hue-core 必须放在 wheel 外面：wheel 上有 mask 挖空，
+                   子元素会跟着一起被挖掉，预览色块就看不见了 -->
+              <div class="hue-wrap">
+                <div class="hue-wheel" id="hue-wheel">
+                  <i class="hue-dot" id="hue-dot"></i>
+                </div>
+                <span class="hue-core" id="hue-core"></span>
+              </div>
+              <div class="picker-side">
+                <div class="mem-head">
+                  <span class="mem-title">明度</span>
+                  <span class="mem-value" id="accent-lum-text">62%</span>
+                </div>
+                <input type="range" class="mem-range" id="accent-lum" min="34" max="80" step="1" value="62">
+                <p class="muted small picker-tip">在色环上取色，或者直接点上面的预设。明度调到看着舒服为止，太亮会发飘、太暗会发闷。</p>
+              </div>
+            </div>
+
+            <div class="set-divider"></div>
+
+            <div class="kv">
+              <span class="k">背景图</span>
+              <span class="v">
+                <span class="bg-actions">
+                  <button class="btn ghost small" id="bg-pick">导入…</button>
+                  <button class="btn ghost small" id="bg-clear">恢复默认</button>
+                </span>
+              </span>
+            </div>
+            <!-- 点这一行打开背景图库；缩略图直接切，不用再走文件选择框 -->
+            <div class="bg-picker">
+              <button class="bg-current" id="bg-current" type="button">
+                <img class="bg-current-thumb" id="bg-current-thumb" alt="" hidden>
+                <span class="bg-current-name" id="bg-current-name">默认背景</span>
+                <span class="bg-caret">▾</span>
+              </button>
+            </div>
+            <div class="set-row">
+              <span class="k">背景遮罩<span class="sub">调高一点文字更清楚</span></span>
+              <span class="v bg-shade-row">
+                <input type="range" class="mem-range" id="bg-shade-range" min="45" max="95" step="1" value="68">
+                <span class="mem-value" id="bg-shade-text">68%</span>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-group" id="set-java">
+          <h4>Java</h4>
+          <div class="card">
+            <div class="set-head">
+              <span>已检测到的 Java</span>
+              <span class="set-head-acts">
+                <button class="btn ghost small" id="java-download">下载 Java</button>
+                <button class="btn ghost small" id="java-refresh">重新扫描</button>
+              </span>
+            </div>
+            <div class="java-list" id="java-list">
+              <div class="loading-block small"><div class="gooey"><i></i><i></i><i></i></div><span class="loading-text">正在检测…</span></div>
+            </div>
+            <div class="set-add">
+              <input class="dlc-input" id="java-path" spellcheck="false"
+                     placeholder="C:\Program Files\Java\jdk-21\bin\javaw.exe">
+              <button class="btn ghost small" id="java-browse">浏览…</button>
+              <button class="btn ghost small" id="java-add">添加</button>
+            </div>
+
+            <div class="set-divider"></div>
+
+            <div class="set-row">
+              <span class="k">使用哪个 Java</span>
+              <span class="v">
+                <select class="ad-select" id="set-java-type">
+                  <option value="auto">自动选择</option>
+                  <option value="version">指定版本号</option>
+                  <option value="detected">手动指定</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row" id="row-java-custom">
+              <span class="k">Java 路径</span>
+              <span class="v"><input class="dlc-input" id="set-java-custom" spellcheck="false" placeholder="留空表示交给自动选择"></span>
+            </div>
+            <div class="set-row">
+              <span class="k">JVM 参数<span class="sub">每行一条，或空格分隔</span></span>
+              <span class="v"><textarea class="dlc-input param-area" id="set-jvm-options" rows="3" spellcheck="false" placeholder="每行一条，或空格分隔"></textarea></span>
+            </div>
+            <label class="set-row">
+              <span class="k">不优化 JVM 参数<span class="sub">不追加 HMCL 的默认参数，完全用上面填的</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-no-jvm-opt"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">不使用 javaw<span class="sub">改用 java.exe 启动，会带一个控制台窗口</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-not-use-javaw"></span>
+            </label>
+            <label class="set-row">
+              <span class="k">跳过 JVM 兼容性检查</span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-not-check-jvm"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="settings-group" id="set-game">
+          <h4>游戏</h4>
+          <div class="card">
+            <label class="set-row">
+              <span class="k">默认版本隔离策略<span class="sub">隔离后每个版本有自己的 mods / saves，模组不会串味</span></span>
+              <span class="v">
+                <select class="ad-select" id="set-isolation">
+                  <option value="MODDED">隔离模组实例</option>
+                  <option value="ALWAYS">隔离所有实例</option>
+                  <option value="NEVER">不隔离实例</option>
+                </select>
+              </span>
+            </label>
+            <label class="set-row">
+              <span class="k">自动分配内存<span class="sub">按 Mod 数量和电脑内存估算</span></span>
+              <span class="v"><input type="checkbox" class="set-check" id="set-auto-memory"></span>
+            </label>
+            <div class="mem-panel" id="row-memory">
+              <div class="mem-head">
+                <span class="mem-title">最大内存</span>
+                <span class="mem-value" id="mem-max-value">—</span>
+              </div>
+              <input type="range" class="mem-range" id="mem-max-range" min="1" max="49" step="1" value="13">
+
+              <div class="mem-bar" id="mem-bar">
+                <i class="mem-seg used" id="mem-seg-used"></i>
+                <i class="mem-seg game" id="mem-seg-game"></i>
+                <i class="mem-seg free" id="mem-seg-free"></i>
+              </div>
+              <div class="mem-legend">
+                <span><i class="dot used"></i>已用 <b id="mem-used-text">—</b></span>
+                <span><i class="dot game"></i>游戏分配 <b id="mem-game-text">—</b></span>
+                <span><i class="dot free"></i>空闲 <b id="mem-free-text">—</b></span>
+              </div>
+              <div class="mem-warn" id="mem-warn" hidden></div>
+            </div>
+
+            <div class="set-divider"></div>
+
+            <div class="set-row">
+              <span class="k">游戏窗口</span>
+              <span class="v">
+                <select class="ad-select" id="set-window-type">
+                  <option value="windowed">窗口化</option>
+                  <option value="fullscreen">全屏</option>
+                  <option value="maximized">最大化</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row" id="row-window-size">
+              <span class="k">窗口尺寸</span>
+              <span class="v memory-row">
+                <input class="set-num" type="number" min="320" step="10" id="set-width">
+                <span class="dash">×</span>
+                <input class="set-num" type="number" min="240" step="10" id="set-height">
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">运行目录<span class="sub">相对于游戏目录，留空表示根目录</span></span>
+              <span class="v"><input class="dlc-input" id="set-running-dir" spellcheck="false" placeholder="留空"></span>
+            </div>
+            <div class="set-row">
+              <span class="k">进程优先级</span>
+              <span class="v">
+                <select class="ad-select" id="set-priority">
+                  <option value="low">低</option>
+                  <option value="below_normal">低于正常</option>
+                  <option value="normal">正常</option>
+                  <option value="above_normal">高于正常</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">启动游戏后</span>
+              <span class="v">
+                <select class="ad-select" id="set-visibility">
+                  <option value="hide">隐藏启动器</option>
+                  <option value="keep">保持显示</option>
+                  <option value="close">关闭启动器</option>
+                  <option value="hide_and_reopen">隐藏，游戏退出后再打开</option>
+                </select>
+              </span>
+            </div>
+            <div class="set-row">
+              <span class="k">游戏参数<span class="sub">附加在启动命令末尾</span></span>
+              <span class="v"><textarea class="dlc-input param-area" id="set-game-args" rows="3" spellcheck="false" placeholder="留空，每行一条"></textarea></span>
+            </div>
+
+            <div class="set-divider"></div>
+
+            <div class="set-row readonly">
+              <span class="k">游戏目录</span>
+              <span class="v mono" id="set-game-dir"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-group" id="set-network">
+          <h4>下载与网络</h4>
+          <div class="card">
+            <div class="kv">
+              <span class="k">版本清单源</span>
+              <span class="v">
+                <select class="ad-select" id="set-version-source">
+                  <option value="default">自动选择</option>
+                  <option value="official">官方源</option>
+                  <option value="mirror">BMCLAPI 镜像</option>
+                </select>
+              </span>
+            </div>
+            <div class="kv">
+              <span class="k">文件下载源</span>
+              <span class="v">
+                <select class="ad-select" id="set-file-source">
+                  <option value="default">自动选择</option>
+                  <option value="official">官方源</option>
+                  <option value="mirror">BMCLAPI 镜像</option>
+                </select>
+              </span>
+            </div>
+            <div class="kv">
+              <span class="k">下载线程</span>
+              <span class="v">
+                <span class="seg" id="thread-mode-seg">
+                  <button data-thread-mode="auto">自动</button>
+                  <button data-thread-mode="manual">手动</button>
+                </span>
+                <input class="name-input threads-input" id="set-threads" type="number" min="1" max="256" spellcheck="false">
+              </span>
+            </div>
+            <div class="kv">
+              <span class="k">默认内容源<span class="sub">搜索模组 / 资源包时先查哪个站</span></span>
+              <span class="v">
+                <select class="ad-select" id="set-addon-source">
+                  <option value="modrinth">Modrinth</option>
+                  <option value="curseforge">CurseForge</option>
+                </select>
+              </span>
+            </div>
+            <div class="kv">
+              <span class="k">下载缓存<span class="sub">只清 cache，不动 libraries 和 assets</span></span>
+              <span class="v"><button class="btn ghost small" id="set-clean-cache">清理缓存</button></span>
+            </div>
+            <div class="kv">
+              <span class="k">网络代理<span class="sub">下载游戏、模组、资源文件都走这里</span></span>
+              <span class="v">
+                <select class="ad-select" id="set-proxy-type">
+                  <option value="system">跟随系统</option>
+                  <option value="direct">不使用代理</option>
+                  <option value="http">HTTP</option>
+                  <option value="socks">SOCKS5</option>
+                </select>
+              </span>
+            </div>
+            <div class="kv" id="set-proxy-fields" hidden>
+              <span class="k">代理服务器</span>
+              <span class="v proxy-grid">
+                <input class="dlc-input" id="set-proxy-host" spellcheck="false" placeholder="127.0.0.1">
+                <input class="dlc-input" id="set-proxy-port" type="number" min="0" max="65535" placeholder="7890">
+                <input class="dlc-input" id="set-proxy-user" spellcheck="false" placeholder="用户名">
+                <input class="dlc-input" id="set-proxy-pass" type="password" placeholder="密码">
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-group" id="set-about">
+          <h4>关于</h4>
+          <div class="card">
+            <div class="kv">
+              <span class="k">版本</span>
+              <span class="v">
+                <span id="about-version"></span>
+                <button class="btn ghost small" id="check-update">检查更新</button>
+              </span>
+            </div>
+            <div class="kv"><span class="k">WebView</span><span class="v" id="about-ua"></span></div>
+            <div class="kv"><span class="k">协议</span><span class="v">GPL-3.0 · 基于 HMCL 上游</span></div>
+          </div>
+
+          <!-- 检查出结果才显示：新版本号、更新说明、下载进度、重启按钮 -->
+          <div class="card pad update-card" id="update-card" hidden>
+            <div class="update-head">
+              <strong id="update-title">发现新版本</strong>
+              <span class="muted small" id="update-version"></span>
+            </div>
+            <p class="update-notes muted small" id="update-notes"></p>
+            <div class="mem-bar update-bar" id="update-bar-wrap" hidden>
+              <i class="mem-seg used" id="update-bar"></i>
+            </div>
+            <div class="update-actions">
+              <span class="muted small" id="update-status"></span>
+              <button class="btn primary small" id="update-now">下载更新</button>
+            </div>
+          </div>
+
+          <h4>致谢</h4>
+          <div class="card pad credits">
+            <p class="credits-intro muted small">
+              本启动器站在前辈们的肩膀上，向所有开源社区的贡献者致敬。以下排名不分先后，如有机会，请为前辈点击一颗Star
+            </p>
+
+            <div class="credit-group">
+              <div class="credit-title">上游</div>
+              <div class="credit-row">
+                <span class="credit-name">HMCL<em>Hello Minecraft! Launcher</em></span>
+                <span class="credit-by">huangyuhui 及贡献者</span>
+                <a class="credit-link" data-url="https://github.com/HMCL-dev/HMCL">github.com/HMCL-dev/HMCL</a>
+              </div>
+            </div>
+
+            <!-- 联机页托管的是外部程序：AGPL-3.0 的例外条款要求在使用处标明版权，
+                 这里和「联机」页底部各有一处 -->
+            <div class="credit-group">
+              <div class="credit-title">联机</div>
+              <div class="credit-row">
+                <span class="credit-name">Terracotta<em>陶瓦联机</em></span>
+                <span class="credit-by">burningtnt 及贡献者 · AGPL-3.0</span>
+                <a class="credit-link" data-url="https://github.com/burningtnt/Terracotta">github.com/burningtnt/Terracotta</a>
+              </div>
+            </div>
+
+            <div class="credit-group">
+              <div class="credit-title">外壳与界面</div>
+              <div class="credit-row">
+                <span class="credit-name">Tauri</span>
+                <span class="credit-by">Tauri Contributors</span>
+                <a class="credit-link" data-url="https://github.com/tauri-apps/tauri">github.com/tauri-apps/tauri</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">WebView2</span>
+                <span class="credit-by">Microsoft</span>
+                <a class="credit-link" data-url="https://learn.microsoft.com/microsoft-edge/webview2/">learn.microsoft.com/microsoft-edge/webview2</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">JavaFX<em>OpenJFX</em></span>
+                <span class="credit-by">OpenJDK 社区</span>
+                <a class="credit-link" data-url="https://github.com/openjdk/jfx">github.com/openjdk/jfx</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">three.js</span>
+                <span class="credit-by">Ricardo Cabello（mrdoob）及贡献者</span>
+                <a class="credit-link" data-url="https://github.com/mrdoob/three.js">github.com/mrdoob/three.js</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">skinview3d</span>
+                <span class="credit-by">Blessing Skin 社区</span>
+                <a class="credit-link" data-url="https://github.com/bs-community/skinview3d">github.com/bs-community/skinview3d</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">esbuild</span>
+                <span class="credit-by">Evan Wallace</span>
+                <a class="credit-link" data-url="https://github.com/evanw/esbuild">github.com/evanw/esbuild</a>
+              </div>
+            </div>
+
+            <div class="credit-group">
+              <div class="credit-title">运行时</div>
+              <div class="credit-row">
+                <span class="credit-name">Oracle JDK 21<em>jlink 裁剪</em></span>
+                <span class="credit-by">Oracle Corporation</span>
+                <a class="credit-link" data-url="https://www.oracle.com/java/technologies/downloads/">oracle.com/java/technologies/downloads</a>
+              </div>
+            </div>
+
+            <div class="credit-group">
+              <div class="credit-title">数据与下载源</div>
+              <div class="credit-row">
+                <span class="credit-name">Mojang 版本清单</span>
+                <span class="credit-by">Mojang Studios</span>
+                <a class="credit-link" data-url="https://launchermeta.mojang.com/mc/game/version_manifest_v2.json">launchermeta.mojang.com</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">BMCLAPI<em>国内镜像</em></span>
+                <span class="credit-by">bangbang93</span>
+                <a class="credit-link" data-url="https://github.com/bangbang93/BMCLAPI">github.com/bangbang93/BMCLAPI</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Modrinth</span>
+                <span class="credit-by">Modrinth 团队</span>
+                <a class="credit-link" data-url="https://github.com/modrinth/code">github.com/modrinth/code</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">CurseForge</span>
+                <span class="credit-by">Overwolf</span>
+                <a class="credit-link" data-url="https://docs.curseforge.com/">docs.curseforge.com</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">authlib-injector</span>
+                <span class="credit-by">yushijinhun</span>
+                <a class="credit-link" data-url="https://github.com/yushijinhun/authlib-injector">github.com/yushijinhun/authlib-injector</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Blessing Skin</span>
+                <span class="credit-by">Blessing Skin 社区</span>
+                <a class="credit-link" data-url="https://github.com/bs-community/blessing-skin-server">github.com/bs-community/blessing-skin-server</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">LittleSkin<em>皮肤站</em></span>
+                <span class="credit-by">LittleSkin 团队</span>
+                <a class="credit-link" data-url="https://littleskin.cn">littleskin.cn</a>
+              </div>
+            </div>
+
+            <div class="credit-group">
+              <div class="credit-title">游戏与加载器</div>
+              <div class="credit-row">
+                <span class="credit-name">Minecraft</span>
+                <span class="credit-by">Mojang Studios</span>
+                <a class="credit-link" data-url="https://www.minecraft.net">minecraft.net</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Fabric</span>
+                <span class="credit-by">FabricMC</span>
+                <a class="credit-link" data-url="https://github.com/FabricMC/fabric">github.com/FabricMC/fabric</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Quilt</span>
+                <span class="credit-by">QuiltMC</span>
+                <a class="credit-link" data-url="https://github.com/QuiltMC/quilt-loader">github.com/QuiltMC/quilt-loader</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Forge</span>
+                <span class="credit-by">MinecraftForge</span>
+                <a class="credit-link" data-url="https://github.com/MinecraftForge/MinecraftForge">github.com/MinecraftForge/MinecraftForge</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">NeoForge</span>
+                <span class="credit-by">NeoForged</span>
+                <a class="credit-link" data-url="https://github.com/neoforged/NeoForge">github.com/neoforged/NeoForge</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Cleanroom</span>
+                <span class="credit-by">CleanroomMC</span>
+                <a class="credit-link" data-url="https://github.com/CleanroomMC/Cleanroom">github.com/CleanroomMC/Cleanroom</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">OptiFine</span>
+                <span class="credit-by">sp614x</span>
+                <a class="credit-link" data-url="https://optifine.net">optifine.net</a>
+              </div>
+              <div class="credit-row">
+                <span class="credit-name">Fugue · Scalar Legacy<em>Cleanroom 兼容补丁</em></span>
+                <span class="credit-by">CleanroomMC</span>
+                <a class="credit-link" data-url="https://modrinth.com/mod/fugue">modrinth.com/mod/fugue</a>
+              </div>
+            </div>
+
+            <div class="credit-group">
+              <div class="credit-title">素材</div>
+              <div class="credit-row">
+                <span class="credit-name">皮肤 / 盔甲 / 物品贴图</span>
+                <span class="credit-by">取自 Minecraft 1.21.1 与 1.21.9 客户端，Mojang Studios 版权所有</span>
+                <a class="credit-link" data-url="https://www.minecraft.net">minecraft.net</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+  <!-- 下载任务小窗：点顶栏的进度按钮弹出 -->
+  <div class="dl-popover hidden" id="dl-popover">
+    <h5>下载任务</h5>
+    <div id="dl-popover-list"></div>
+  </div>
+
+<!-- 选盔甲：贴着格子弹出的小浮层，不遮页面。
+     fixed 定位、不占流，所以放在 body 末尾，由脚本算坐标。 -->
+<div class="armor-pop" id="armor-picker" hidden>
+  <div class="armor-pop-head" id="armor-pick-title">头盔</div>
+  <div class="armor-pop-grid" id="armor-pick-grid"></div>
+</div>
+
+<!-- 崩溃分析 -->
+<!-- 下载 Java：当前设备能装哪些版本 + 安装进度。
+     列表来自后端 listInstallableJava（foojay），安装是一条龙：下载 → 校验 → 解压 → 注册。 -->
+<div class="modal hidden" id="java-dl-modal">
+  <div class="modal-body card java-dl-body">
+    <div class="modal-head">
+      <h3>下载 Java</h3>
+      <button class="icon-btn" id="java-dl-close">✕</button>
+    </div>
+    <p class="muted small java-dl-hint" id="java-dl-hint">选择所需Java版本进行安装，将解压至启动器目录。下载进度见右上角任务列表，可以先关掉这个窗口。</p>
+    <div class="java-dl-list" id="java-dl-list"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="java-dl-done">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="legacy-modal">
+  <div class="modal-body card legacy-body">
+    <div class="modal-head">
+      <h3>从旧启动器搬过来</h3>
+      <button class="icon-btn" id="legacy-close">✕</button>
+    </div>
+    <p class="muted small legacy-hint" id="legacy-data"></p>
+    <div class="legacy-list" id="legacy-list"></div>
+    <div class="legacy-mode-row">
+      <span class="seg" id="legacy-mode">
+        <button data-legacy-mode="move">移动</button>
+        <button data-legacy-mode="reference">引用</button>
+      </span>
+      <span class="muted small" id="legacy-mode-hint"></span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="legacy-cancel">取消</button>
+      <button class="btn primary" id="legacy-do">导入</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="crash-modal">
+  <div class="modal-body card crash-body">
+    <div class="modal-head">
+      <h3 id="crash-modal-title">崩溃分析</h3>
+      <button class="icon-btn" id="crash-close">✕</button>
+    </div>
+    <div class="crash-content" id="crash-content"></div>
+  </div>
+</div>
+
+<!-- 已装资源的更新列表（模组 / 资源包 / 光影） -->
+<div class="modal hidden" id="upd-modal">
+  <div class="modal-body card upd-body">
+    <div class="modal-head">
+      <h3 id="upd-title">资源更新</h3>
+      <button class="icon-btn" id="upd-close">✕</button>
+    </div>
+    <div class="upd-bar" id="upd-bar" hidden>
+      <button class="link upd-all" id="upd-check-all">全选</button>
+      <span class="upd-sum" id="upd-sum"></span>
+      <span class="upd-gap"></span>
+      <button class="btn ghost small" id="upd-btn-selected">更新选中</button>
+      <button class="btn primary small" id="upd-btn-all">全部更新</button>
+    </div>
+    <div class="upd-list" id="upd-list"></div>
+  </div>
+</div>
+
+<!-- 游戏文件完整性：客户端 jar / 库 / 资源 -->
+<div class="modal hidden" id="integ-modal">
+  <div class="modal-body card integ-body">
+    <div class="modal-head">
+      <h3 id="integ-title">游戏文件完整性</h3>
+      <button class="icon-btn" id="integ-close">✕</button>
+    </div>
+    <div class="integ-content" id="integ-content"></div>
+  </div>
+</div>
+
+<!-- 导入压缩包：选完文件先预检，把类型/目标/风险摆出来再让用户确认 -->
+<div class="modal hidden" id="import-modal">
+  <div class="modal-body card import-body">
+    <div class="modal-head">
+      <h3>导入压缩包</h3>
+      <button class="icon-btn" id="import-close">✕</button>
+    </div>
+    <div class="import-content" id="import-content"></div>
+    <div class="import-foot">
+      <span class="import-hint" id="import-hint"></span>
+      <button class="btn ghost" id="import-cancel">取消</button>
+      <button class="btn primary" id="import-go">导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 导出整合包 -->
+<div class="modal hidden" id="mp-export-modal">
+  <div class="modal-body card mp-export-body">
+    <div class="modal-head">
+      <h3>导出整合包</h3>
+      <button class="icon-btn" id="mp-export-close">✕</button>
+    </div>
+    <div class="mp-form">
+      <div class="mp-row">
+        <label>格式</label>
+        <div class="seg" id="mp-export-format">
+          <button data-fmt="mrpack" class="active">Modrinth .mrpack</button>
+          <button data-fmt="mcbbs">启动器 zip</button>
+          <button data-fmt="server">服务端包</button>
+        </div>
+        <p class="mp-hint" id="mp-export-hint">跨启动器通用，能直接上传到 Modrinth；模组会被替换成下载链接。</p>
+      </div>
+      <div class="mp-row">
+        <label>名称</label>
+        <input class="mp-input" id="mp-export-name" placeholder="整合包名称">
+      </div>
+      <div class="mp-row two">
+        <div><label>版本</label><input class="mp-input" id="mp-export-version" value="1.0"></div>
+        <div><label>作者</label><input class="mp-input" id="mp-export-author" placeholder="你的名字"></div>
+      </div>
+      <div class="mp-row">
+        <label>简介</label>
+        <textarea class="mp-input" id="mp-export-desc" rows="2" placeholder="一句话说明这个整合包"></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="mp-export-cancel">取消</button>
+      <button class="btn primary" id="mp-export-go">选择位置并导出</button>
+    </div>
+  </div>
+</div>
+
+<!-- 实例里已装的内容（模组 / 资源包 / 光影） -->
+<div class="modal hidden" id="addons-modal">
+  <div class="modal-body card addon-body">
+    <div class="modal-head">
+      <h3 id="addons-title">实例内容</h3>
+      <button class="icon-btn" id="addons-close">✕</button>
+    </div>
+    <div class="seg" id="addons-kinds">
+      <button data-addon-kind="mod" class="active">模组</button>
+      <button data-addon-kind="resourcepack">资源包</button>
+      <button data-addon-kind="shader">光影</button>
+    </div>
+    <div class="addon-list" id="addon-list"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="addons-done">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 内容（模组 / 资源包 / 光影 / 整合包）的版本选择窗。
+     之前是 480px 的小窗，只能显示版本号；现在要放加载器、支持的游戏版本、
+     版本类型、更新时间、文件名和大小，所以换成大窗。 -->
+<div class="modal hidden" id="adver-modal">
+  <div class="modal-body card adver-body">
+    <div class="adver-head">
+      <div class="adver-head-text">
+        <h3 id="adver-title">选择版本</h3>
+        <div class="adver-sub" id="adver-sub"></div>
+      </div>
+      <button class="icon-btn" id="adver-close">✕</button>
+    </div>
+
+    <!-- 筛选条：默认按当前实例的游戏版本 + 加载器，用户可自己改 -->
+    <div class="adver-filters">
+      <label class="adver-field">
+        <span>游戏版本</span>
+        <select class="ad-select" id="adver-gv"></select>
+      </label>
+      <label class="adver-field">
+        <span>加载器</span>
+        <select class="ad-select" id="adver-loader"></select>
+      </label>
+      <label class="adver-check">
+        <input type="checkbox" id="adver-release-only">
+        <span>只看正式版</span>
+      </label>
+      <span class="muted small adver-count" id="adver-count"></span>
+    </div>
+
+    <div class="adver-list" id="adver-list"></div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="adver-cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 背景图库：设置 → 外观 → 点「当前背景」那一行打开。
+     一页 6 张（3 列 × 2 行），超出翻页；点缩略图直接切换。 -->
+<div class="modal hidden" id="bg-modal">
+  <div class="modal-body card bg-pick-body">
+    <div class="modal-head">
+      <h3>选择背景图</h3>
+      <button class="icon-btn" id="bg-modal-close">✕</button>
+    </div>
+    <div class="bg-grid" id="bg-grid"></div>
+    <p class="bg-empty" id="bg-empty">还没有导入过背景图</p>
+    <div class="ad-pager" id="bg-pager" hidden>
+      <button class="btn ghost" id="bg-prev">上一页</button>
+      <span class="muted small" id="bg-page-label"></span>
+      <button class="btn ghost" id="bg-next">下一页</button>
+    </div>
+  </div>
+</div>
+
+<!-- 背景图卡片的右键菜单。挂 body 层：卡片上有 overflow:hidden，菜单放在里面会被切掉 -->
+<div class="ctx-menu" id="bg-ctx" hidden>
+  <button class="ctx-item" type="button" data-ctx="rename">重命名</button>
+  <button class="ctx-item danger" type="button" data-ctx="delete">删除</button>
+</div>
+
+<!-- 下载确认：改文件名 / 选保存位置。
+     有实例时位置锁死在实例的 mods 目录，没实例才让用户挑。 -->
+<div class="modal hidden" id="dlc-modal">
+  <div class="modal-body card dlc-body">
+    <div class="modal-head">
+      <h3>确认下载</h3>
+      <button class="icon-btn" id="dlc-close">✕</button>
+    </div>
+
+    <div class="dlc-summary" id="dlc-summary"></div>
+
+    <label class="dlc-field" id="dlc-name-field">
+      <span>保存文件名</span>
+      <input class="dlc-input" id="dlc-name" type="text" spellcheck="false">
+    </label>
+
+    <label class="dlc-field" id="dlc-name2-field" hidden>
+      <span>实例名称</span>
+      <input class="dlc-input" id="dlc-name2" type="text" spellcheck="false" placeholder="留空则用整合包自带的名字">
+    </label>
+
+    <div class="dlc-field" id="dlc-dir-field">
+      <span>保存位置</span>
+      <div class="dlc-dir">
+        <!-- 显示用 div + 隐藏 input：路径太长时 input 只能尾部截断，而尾巴恰恰是
+             用户最想看的（最后一级目录）。换成 div 后可以中间省略，头尾都留着。 -->
+        <div class="dlc-path" id="dlc-path" title=""></div>
+        <input type="hidden" id="dlc-dir">
+        <!-- 有实例时默认是实例目录，但用户仍然可以改：把模组下到别处再手动挑是这个
+             场景的常见需求，锁死不如让他改完自己认。 -->
+        <button class="btn ghost small" id="dlc-browse">浏览…</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="dlc-cancel">取消</button>
+      <button class="btn primary" id="dlc-ok">开始下载</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用输入框（重命名用）。浏览器原生 prompt 在 WebView2 里标题是
+     「tauri.localhost 显示」，既不像应用的一部分，也没法调样式。 -->
+<div class="modal hidden" id="name-modal">
+  <div class="modal-body card name-body">
+    <div class="modal-head">
+      <h3 id="name-title">重命名</h3>
+      <button class="icon-btn" id="name-close">✕</button>
+    </div>
+    <input class="name-input" id="name-input" type="text" spellcheck="false" maxlength="40">
+    <div class="modal-actions">
+      <button class="btn ghost" id="name-cancel">取消</button>
+      <button class="btn primary" id="name-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 启动前检查 =================
+     后端在拉起进程之前跑一遍资源检查，有问题才推到这里。没有问题的实例
+     根本不会出现这个弹窗 —— 不要为了「仪式感」加一次多余的确认。 -->
+<div class="modal hidden" id="lc-modal">
+  <div class="modal-body card lc-body">
+    <div class="modal-head">
+      <h3>启动前检查</h3>
+      <button class="icon-btn" id="lc-close">✕</button>
+    </div>
+    <p class="lc-sub" id="lc-sub"></p>
+    <div class="lc-list" id="lc-list"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="lc-cancel">取消</button>
+      <button class="btn primary" id="lc-ok">继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- 启动进度：点「启动」后出现，显示正在做什么，可中途取消 -->
+<div class="modal hidden" id="lp-modal">
+  <div class="modal-body card lp-body">
+    <div class="modal-head">
+      <h3>启动游戏</h3>
+    </div>
+    <p class="lp-stage" id="lp-stage">正在准备启动…</p>
+    <div class="lp-bar" id="lp-bar"><i class="lp-fill" id="lp-fill"></i></div>
+    <div class="lp-foot">
+      <span class="lp-note" id="lp-note"></span>
+      <button class="btn ghost" id="lp-cancel">取消启动</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 安装选项（原版 / 加载器） ================= -->
+<div class="modal hidden" id="loader-modal">
+  <div class="modal-body card im-body">
+    <div class="modal-head">
+      <h3>安装新游戏 · <span id="im-version"></span></h3>
+      <button class="icon-btn" id="im-close">✕</button>
+    </div>
+
+    <div class="im-name-row">
+      <span class="im-name-label">游戏实例名称</span>
+      <input class="im-name" id="im-name" type="text" spellcheck="false" maxlength="60">
+      <button class="icon-btn" id="im-name-clear" title="清空">✕</button>
+      <button class="icon-btn" id="im-name-reset" title="恢复默认名称">↻</button>
+    </div>
+
+    <!-- 卡片网格：Minecraft 固定，其余是可选加载器。
+         互斥关系照 HMCL 的 InstallerItemGroup：Forge / NeoForge / Fabric / Quilt 两两冲突，
+         OptiFine 不和任何东西冲突。 -->
+    <div class="im-grid" id="im-grid"></div>
+
+    <!-- 只在选中 Cleanroom 时出现：这两个补丁模组是官方安装说明要求的，
+         不说清楚用户会以为启动器偷偷往 mods 里塞东西 -->
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="im-cancel">取消</button>
+      <button class="btn primary" id="im-confirm" disabled>安装</button>
+    </div>
+  </div>
+</div>
+
+<!-- 选加载器版本的小窗。
+     选完要点「确定」才生效：以前点一行就直接关窗写配置，
+     手滑点错版本只能重进一次安装弹窗，属于最典型的误操作。 -->
+<div class="modal hidden" id="ver-modal">
+  <div class="modal-body card ver-body">
+    <div class="modal-head">
+      <h3 id="ver-title">选择版本</h3>
+      <button class="icon-btn" id="ver-close">✕</button>
+    </div>
+    <div class="ver-sub" id="ver-sub"></div>
+    <div class="ver-search">
+      <input class="ver-input" id="ver-query" type="text" spellcheck="false"
+             placeholder="输入版本号搜索，例如 65.1 或 0.16">
+      <button class="btn ghost small" id="ver-clear" hidden>清空</button>
+      <span class="ver-count" id="ver-count"></span>
+    </div>
+    <div class="lm-list" id="ver-list"></div>
+    <div class="modal-actions ver-actions">
+      <span class="ver-pick" id="ver-pick"></span>
+      <!-- 只有明确拉取失败才出现：成功的空列表是「这个版本没有」，刷新也没用 -->
+      <button class="btn ghost ver-refresh" id="ver-refresh" hidden>↻ 重新拉取</button>
+      <button class="btn ghost" id="ver-cancel">取消</button>
+      <button class="btn primary" id="ver-confirm" disabled>确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 图标选择器 ================= -->
+<div class="modal hidden" id="icon-modal">
+  <div class="modal-body card">
+    <div class="modal-head">
+      <h3>实例图标</h3>
+      <button class="icon-btn" id="icon-close">✕</button>
+    </div>
+
+    <div id="icon-step-pick">
+      <p class="muted small">选一个内置图标，或者用你自己的图片。</p>
+      <div class="icon-grid" id="icon-grid"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="icon-custom">选择图片…</button>
+      </div>
+    </div>
+
+    <div id="icon-step-crop" hidden>
+      <p class="muted small">拖动调整位置，滚轮缩放。最终会裁成正方形 256×256。</p>
+      <div class="crop-stage" id="crop-stage">
+        <canvas id="crop-canvas" width="360" height="360"></canvas>
+        <div class="crop-frame" id="crop-frame"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="crop-cancel">返回</button>
+        <button class="btn primary" id="crop-confirm">使用这张</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 没有可用实例时的引导 =================
+     点「启动游戏 / 打开目录」但没有实例时弹这个。三条路：下载版本、装整合包、
+     导入已有游戏目录（PCL2 / HMCL / 官方启动器）。 -->
+<div class="modal hidden" id="noinst-modal">
+  <div class="modal-body card noinst-body">
+    <div class="modal-head">
+      <h3>当前没有可用的游戏实例</h3>
+      <button class="icon-btn" id="noinst-close">✕</button>
+    </div>
+    <p class="muted small noinst-hint">
+      先装一个游戏版本，或者把电脑上已经有的游戏目录导进来 —— 不用重新下载。
+    </p>
+
+    <div class="noinst-list">
+      <button class="noinst-item" data-noinst="download">
+        <span class="noinst-ico">
+          <svg viewBox="0 0 24 24"><path d="M11 4h2v9l3.5-3.5 1.4 1.4L12 17.8 6.1 10.9l1.4-1.4L11 13zM5 19h14v2H5z"/></svg>
+        </span>
+        <span class="noinst-main">
+          <strong>下载游戏版本</strong>
+          <span>原版 / Fabric / Forge / NeoForge / Quilt，下完直接就是实例</span>
+        </span>
+        <span class="noinst-go">›</span>
+      </button>
+
+      <button class="noinst-item" data-noinst="modpack">
+        <span class="noinst-ico">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16v4H4zM4 12h16v4H4zM4 18h10v2H4z"/></svg>
+        </span>
+        <span class="noinst-main">
+          <strong>安装整合包</strong>
+          <span>从下载页挑一个，或者导入本地的 .zip / .mrpack</span>
+        </span>
+        <span class="noinst-go">›</span>
+      </button>
+
+      <button class="noinst-item" data-noinst="dir">
+        <span class="noinst-ico">
+          <svg viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3zM3 4h7l2 2h9v2H3z"/></svg>
+        </span>
+        <span class="noinst-main">
+          <strong>导入已有的游戏目录</strong>
+          <span>选 PCL2 / HMCL / 官方启动器的 .minecraft，自动扫描里面的所有版本</span>
+        </span>
+        <span class="noinst-go">›</span>
+      </button>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="noinst-cancel">以后再说</button>
+    </div>
+  </div>
+</div>
+
+<!-- gooey 滤镜：三个球靠它融成一滴，加载指示器用（见 .gooey） -->
+<svg class="svg-defs" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="goo">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feColorMatrix in="blur" mode="matrix"
+        values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8" result="goo"/>
+      <feBlend in="SourceGraphic" in2="goo"/>
+    </filter>
+  </defs>
+</svg>
+
+<!-- ================= 登录：离线 / 微软 / 外置认证 =================
+     壳模式没有 JavaFX 窗口，HMCL 自带的那些登录弹窗根本出不来，
+     所以三种登录都在页面里自绘。 -->
+<div class="modal hidden" id="login-offline">
+  <div class="modal-body card auth-body">
+    <div class="modal-head">
+      <h3>离线登录</h3>
+      <button class="icon-btn" id="lo-close">✕</button>
+    </div>
+    <p class="muted small auth-hint">只填用户名，不做联网验证。用户名限 16 个字符，只能用英文字母、数字和下划线。</p>
+    <label class="dlc-field">
+      <span>用户名</span>
+      <input class="dlc-input" id="lo-name" type="text" maxlength="16" spellcheck="false" placeholder="游戏内显示的名字">
+    </label>
+    <p class="field-err" id="lo-hint" hidden></p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="lo-cancel">取消</button>
+      <button class="btn primary" id="lo-ok">登录</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="login-ms">
+  <div class="modal-body card auth-body">
+    <div class="modal-head">
+      <h3>微软正版登录</h3>
+      <button class="icon-btn" id="lm-close">✕</button>
+    </div>
+    <div id="lm-body">
+      <p class="muted small auth-hint" id="lm-stage">正在申请登录代码…</p>
+      <div class="auth-code-box" id="lm-code-box" hidden>
+        <div class="auth-code" id="lm-code">----</div>
+        <!-- 说明文字在上面的 #lm-stage 里，这里只放地址，避免同一句写两遍 -->
+        <a class="auth-link" id="lm-url" href="#" target="_blank" rel="noreferrer"></a>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="lm-cancel">取消</button>
+      <button class="btn ghost" id="lm-open" hidden>打开登录页</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="login-authlib">
+  <div class="modal-body card auth-body">
+    <div class="modal-head">
+      <h3>外置认证登录</h3>
+      <button class="icon-btn" id="la-close">✕</button>
+    </div>
+    <p class="muted small auth-hint">选一个皮肤站登录。内置 LittleSkin，也可以加自己的皮肤站。</p>
+
+    <label class="dlc-field">
+      <span>皮肤站</span>
+      <select class="ad-select auth-select" id="la-server"></select>
+    </label>
+
+    <div class="auth-servers" id="la-server-tools">
+      <button class="link" id="la-toggle-add">＋ 添加自定义皮肤站</button>
+    </div>
+
+    <div class="auth-add" id="la-add" hidden>
+      <label class="dlc-field">
+        <span>API 根地址</span>
+        <input class="dlc-input" id="la-url" type="text" spellcheck="false" placeholder="https://example.com/api/yggdrasil/">
+      </label>
+      <div class="auth-add-actions">
+        <span class="dlc-hint" id="la-add-hint">名称等信息会自动从皮肤站读取</span>
+        <button class="btn ghost small" id="la-add-ok">添加</button>
+      </div>
+    </div>
+
+    <label class="dlc-field">
+      <span>邮箱 / 用户名</span>
+      <input class="dlc-input" id="la-user" type="text" spellcheck="false" autocomplete="username">
+    </label>
+    <label class="dlc-field">
+      <span>密码</span>
+      <input class="dlc-input" id="la-pass" type="password" autocomplete="current-password">
+    </label>
+
+    <div class="modal-actions">
+      <button class="btn ghost" id="la-cancel">取消</button>
+      <button class="btn primary" id="la-ok">登录</button>
+    </div>
+  </div>
+</div>
+
+<!-- 动态正文：在启动器内部读，不跳浏览器 -->
+<div class="modal hidden" id="news-modal">
+  <div class="modal-body card news-body">
+    <div class="modal-head">
+      <h3 id="news-title">动态</h3>
+      <button class="icon-btn" id="news-close">✕</button>
+    </div>
+    <div class="news-meta" id="news-meta"></div>
+    <div class="news-article" id="news-article"></div>
+  </div>
+</div>
+
+<!-- 下载完成通知：贴屏幕右下角、任务栏之上，可堆叠 -->
+<div class="done-toasts" id="done-toasts"></div>
+
+<!-- Toast 容器：Java 侧的 showToast 与前端自己的提示都落在这里 -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- 拖拽导入遮罩：路径来自壳侧的原生拖放事件，这里只负责给反馈 -->
+<div class="drop-overlay" id="drop-overlay" aria-hidden="true">
+  <div class="drop-box">
+    <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+    </svg>
+    <strong id="drop-overlay-title">松开就装进去</strong>
+    <span id="drop-overlay-tip">模组 / 资源包 / 光影 / 存档 / 整合包都能认</span>
+  </div>
+</div>
+
+<!-- 窗口缩放热区 -->
+<div class="rz rz-n" data-resize="n"></div>
+<div class="rz rz-s" data-resize="s"></div>
+<div class="rz rz-w" data-resize="w"></div>
+<div class="rz rz-e" data-resize="e"></div>
+<div class="rz rz-nw" data-resize="nw"></div>
+<div class="rz rz-ne" data-resize="ne"></div>
+<div class="rz rz-sw" data-resize="sw"></div>
+<div class="rz rz-se" data-resize="se"></div>
+
+<script src="app.js?v=af3ed24d8a"></script>
+<!-- 前端 3D 皮肤渲染（three.js + skinview3d，MIT）。只在 Tauri 壳模式启用，
+     JavaFX WebView 那边继续用 Java 侧出的 PNG。 -->
+<script src="vendor/skinview3d.bundle.js"></script>
+<!-- Tauri 壳的桥接适配层：非 Tauri 环境（JavaFX WebView）内部直接 return，不产生任何副作用 -->
+<script src="tauri-shim.js"></script>
+</body>
+</html>

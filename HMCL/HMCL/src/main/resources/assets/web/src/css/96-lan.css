@@ -1,0 +1,96 @@
+/* ---------- 多人联机（陶瓦联机托管） ---------- */
+
+/* 居中成一列。这一页只有「一张操作卡 + 一张致谢卡」，拉满整宽会显得空旷，
+   提示文字也会离按钮很远。
+   `.page` 默认 display:none，这里用 `#page-lan.on` 的优先级压过它，
+   切页时其他页面不受影响。 */
+#page-lan.on {
+  display: flex; justify-content: center; align-items: center;
+  min-height: calc(100vh - 200px);
+}
+.lan-wrap { width: 100%; max-width: 600px; }
+
+.lan-card { padding: 18px 20px 18px; }
+
+/* 一句话状态 + 徽标。文字保持单行，窗口窄了省略号收尾 */
+.lan-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px;
+}
+.lan-hint {
+  margin: 0; font-size: 13px; line-height: 1.6; color: var(--text);
+  flex: 1 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 三档状态：未加载灰、就绪用主题色、运行中绿、出错红。
+   没加载时不该出现绿色，那会让人以为已经能用了 */
+.lan-badge {
+  flex: 0 0 auto; padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; background: var(--surface-3); color: var(--muted);
+}
+.lan-badge.ready {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.lan-badge.on {
+  background: color-mix(in srgb, #2fa96b 16%, transparent);
+  color: #1f7a4d;
+}
+.lan-badge.bad {
+  background: color-mix(in srgb, #d64545 14%, transparent);
+  color: #b03030;
+}
+
+.lan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+/* 房间码输入：和按钮同一行排，窄窗口自动换行 */
+.lan-input {
+  width: 118px; padding: 6px 9px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text);
+  font-size: 12.5px; letter-spacing: .06em;
+}
+.lan-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* 房主看到的房间码：等宽、加大字距，方便照着一串念给朋友 */
+.lan-room {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.lan-k { font-size: 11.5px; color: var(--muted); }
+.lan-room-code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 18px; letter-spacing: .18em; color: var(--text);
+}
+
+/* 玩家列表：一行一个胶囊，人数多时自动换行 */
+.lan-players {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;
+}
+.lan-player {
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--surface-3); color: var(--muted); font-size: 12px;
+}
+
+/* 致谢：单独一张卡，说明这一页的联机能力来自哪儿。
+   和上面的操作区分开，不和状态、按钮挤在一起。 */
+.lan-credit {
+  display: flex; align-items: center; gap: 16px;
+  margin-top: 12px; padding: 14px 18px;
+}
+.lan-credit-text { flex: 1 1 auto; min-width: 0; }
+.lan-credit-title {
+  margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text);
+}
+.lan-credit-desc {
+  margin: 4px 0 0; font-size: 11.5px; line-height: 1.65; color: var(--muted);
+}
+.lan-credit-link {
+  display: inline-block; margin-top: 6px;
+  font-size: 11.5px; white-space: nowrap; word-break: normal;
+}
+/* 致谢卡里的按钮不换行：「打开发布页」五个字在 101px 里会被挤成两行 */
+.lan-credit .btn { flex: 0 0 auto; white-space: nowrap; }
