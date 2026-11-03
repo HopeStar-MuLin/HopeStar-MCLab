@@ -1,0 +1,291 @@
+/* ============================================================================
+   实例管理页
+   ========================================================================== */
+
+.inst-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+.inst-back {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+}
+.inst-icon-lg {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: var(--r-md);
+  image-rendering: pixelated;
+  object-fit: contain;
+  background: transparent;
+}
+.inst-hero-main { flex: 1 1 auto; min-width: 0; }
+.inst-hero-main h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-sub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-hero-actions { display: flex; gap: 8px; flex: none; }
+
+/* 实例页的分区导航和设置页共用 .settings-nav，这里只补一下间距 */
+#inst-nav { margin-bottom: var(--sp-3); }
+
+/* 继承提示条 */
+.inst-inherit {
+  margin: 0 0 4px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* 加载器 / 内容列表 */
+.inst-list { display: flex; flex-direction: column; gap: 6px; }
+.inst-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.inst-item-main { flex: 1 1 auto; min-width: 0; }
+.inst-item-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.inst-item-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inst-item.off .inst-item-title { color: var(--muted); text-decoration: line-through; }
+.inst-item-acts { display: flex; gap: 6px; flex: none; }
+.inst-tag {
+  font-size: 10.5px;
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.inst-empty {
+  padding: 26px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ============================================================================
+   首页实例：翻页卡片
+   ----------------------------------------------------------------------------
+   超过 5 个实例时第 6 格换成它，点一下翻到下一页。
+   样式沿用 .instance-more 那套虚线框，但内容改成「页码 + 动作 + 总数」，
+   让用户一眼知道现在在第几页、还有几个。
+   ========================================================================== */
+.instance-page {
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  border-style: dashed;
+  color: var(--muted);
+  user-select: none;
+}
+.instance-page:hover { color: var(--accent); border-color: var(--accent); }
+.instance-page strong { font-size: 13.5px; font-weight: 600; }
+.instance-page .pg-count {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.instance-page:hover .pg-count { color: var(--accent); }
+.instance-page .pg-hint { font-size: 11px; color: var(--muted); }
+
+/* ============================================================================
+   右键菜单
+   ========================================================================== */
+.ctx-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  animation: ctxIn calc(.14s * var(--anim-scene)) var(--ease-standard) both;
+}
+@keyframes ctxIn {
+  from { opacity: 0; transform: translate3d(0, -4px, 0) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+.ctx-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  text-align: left;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.ctx-item:hover:not(.off) { background: var(--surface-2); color: var(--accent); }
+.ctx-item.off { color: var(--muted); cursor: default; }
+.ctx-item.danger:hover { color: #c0392b; }
+
+/* ============================================================================
+   下载按钮里的液滴加载动画（LiquidLoader 移植）
+   ========================================================================== */
+.dl-progress-btn .dl-ring {
+  display: none;
+  /* 横排三个点 + 一个游走点，26×22 够放且不会把按钮撑太宽 */
+  width: 36px;
+  height: 22px;
+  flex: none;
+  margin-right: 6px;
+  /* 动画是逐帧画的，别让 canvas 自带的白底透出来 */
+  background: none;
+}
+.dl-progress-btn.busy .dl-ring { display: block; }
+
+/* 实例表里标出「当前启动」的那一行 */
+.col-name .cur-tag {
+  margin-left: 8px;
+  vertical-align: 1px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+/* ============================================================================
+   下载任务列表（右上角按钮点开）
+   ----------------------------------------------------------------------------
+   版式：标题 + 百分比（同一行，百分比在进度条右上角）/ 进度条 / 状态文案。
+   失败的任务保留在列表里并换成红色原因，带 ✕ 手动移除——以前是直接删掉，
+   用户只知道「失败了」，不知道为什么。
+   ========================================================================== */
+.dl-popover {
+  width: 320px;
+  /* 这里是浮在背景图上的任务列表，原来用 --glass（半透明）压不住背景，
+     文字几乎看不清。提高底色的不透明度，保留毛玻璃的观感。 */
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: var(--shadow-pop);
+}
+body[data-theme="dark"] .dl-popover { background: rgba(30, 34, 42, .94); }
+.dl-popover-list { max-height: 60vh; overflow-y: auto; }
+
+.dl-task { padding: 10px 0; border-top: 1px solid var(--border); }
+.dl-task:first-child { border-top: 0; }
+
+.dlt-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.dlt-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dlt-pct {
+  flex: none;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dlt-bar {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.dlt-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  /* 进度每秒推一两次，linear 才像连续在走 */
+  transition: width calc(.3s * var(--anim-scale)) linear;
+}
+.dlt-bar.indeterminate .dlt-fill {
+  width: 40% !important;
+  animation: dltpulse 1.3s ease-in-out infinite;
+}
+@keyframes dltpulse {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}
+
+.dlt-foot {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dlt-foot.dlt-err { color: #c0392b; white-space: normal; line-height: 1.5; }
+body[data-theme="dark"] .dlt-foot.dlt-err { color: #f08a84; }
+
+.dlt-close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dlt-close:hover { background: var(--surface-3); color: var(--text); }
+
+/* 暂停 / 继续：和 ✕ 同款圆形按钮，但暂停时高亮一下，让人一眼看出这条没在跑 */
+.dlt-pause { font-size: 10px; }
+.dlt-pause:hover { background: var(--surface-3); color: var(--accent); }
+.dlt-foot.dlt-paused { color: var(--accent); }
+

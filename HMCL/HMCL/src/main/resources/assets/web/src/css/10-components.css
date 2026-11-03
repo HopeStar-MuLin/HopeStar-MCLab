@@ -1,0 +1,490 @@
+/* ============================================================================
+   外观页
+   ========================================================================== */
+
+.appearance { display: flex; gap: var(--sp-5); align-items: flex-start; }
+
+/* 左栏宽度跟着窗口走，夹在 250–330：太窄人物糊，太宽右侧卡片挤 */
+.ap-left {
+  width: clamp(250px, 24vw, 330px);
+  flex: 0 0 auto;
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+
+/* 3D 预览：4:5 竖长方形，与 JavaFX 渲染出的图同比例（340×425）。
+   用 flex 居中：canvas / img 的尺寸由 JS 按内容区算（见 previewSize），
+   如果只靠块级流式布局，画布会顶到内容区左上角、大一圈被裁掉下半身。 */
+.preview-slot {
+  width: 100%; aspect-ratio: 4 / 5;
+  overflow: hidden;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-xl);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+}
+.preview-slot img {
+  width: 100%; height: 100%; display: block;
+  object-fit: contain;
+  cursor: grab; -webkit-user-drag: none;
+}
+/* canvas 由 skinview3d 给 width/height 属性，CSS 只兜住不撑破格子 */
+.preview-slot canvas { display: block; max-width: 100%; max-height: 100%; }
+.preview-slot img:active { cursor: grabbing; }
+
+.ap-side { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+
+/* 「模型 / 动作 / 披风 / 盔甲」一行一个控件：左侧固定宽度的标签，右侧控件吃满。
+   早先是三组 seg 平铺 + 竖线分隔，窄侧栏里换行后「纤体 | 站立」会看成四连按钮。 */
+.ap-controls { display: flex; flex-direction: column; gap: 10px; }
+.ap-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ap-row-label { flex: 0 0 32px; font-size: 12px; color: var(--muted); }
+.ap-row .seg { flex: 1; }
+/* 两个选项均分宽度，和右侧的开关对齐成一条竖线 */
+.ap-row .seg button { flex: 1; padding: 5px 10px; }
+
+/* 盔甲：一排四件。2x2 时单格接近 130px，四个空格子把侧栏撑得太高 */
+.ap-armor {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.ap-armor .cs-wrap { width: 100%; min-width: 0; }
+.ap-armor .cs-btn {
+  width: 100%;
+  justify-content: space-between;
+}
+.ap-left .muted.small { margin: 0; line-height: 1.7; }
+
+.seg { position: relative; z-index: 0; display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 12.5px; padding: 5px 14px; border-radius: var(--r-sm);
+  cursor: pointer; font-family: inherit;
+  /* 不参与压缩、不换行：inline-flex 的子项默认 flex: 0 1 auto，
+     容器空间紧一点就按内容比例把两个按钮压成不等宽（「浅色」宽「深色」窄），
+     再叠加界面缩放的亚像素舍入，看着像排版坏了。
+     宁可把容器撑宽，也不牺牲按钮本身的形状。外观页那排是专门的
+     `.ap-row .seg button { flex: 1 }` 均分，不受这条影响。 */
+  flex: 0 0 auto;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+.seg button.active {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  /* 白卡片上的白背景按钮几乎看不出来，靠内描边 + 主色文字把选中态钉住 */
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-1);
+}
+.seg.disabled { opacity: .45; }
+.seg.disabled button { cursor: default; }
+/* 胶囊接管之后按钮自己不再画底和内描边（不然两层叠在一起，滑块一动就露馅） */
+.seg.pill-on button.active { background: transparent; box-shadow: none; }
+
+/* ============================================================================
+   胶囊指示器
+   ----------------------------------------------------------------------------
+   选中态的底色不再挂在按钮自己身上，而是交给一块会滑动的 .nav-pill。
+   这是最"系统 UI"的一处动效：点哪一格，底色从上一格滑过去，视线不用重新找。
+
+   为什么不用 CSS :has / anchor positioning —— JavaFX WebEngine 两个都没有，
+   只能真算位置（见 46-navpill.js）。
+
+   层叠：pill 用 z-index:-1，落在容器背景之上、按钮背景之下。
+   容器必须自己成层叠上下文（sticky 的 nav 天然是，.seg/.tabs 补了 z-index:0）。
+   ========================================================================== */
+.nav-pill {
+  position: absolute;
+  left: 0; top: 0;
+  width: 0; height: 0;
+  z-index: -1;
+  border-radius: var(--pill-radius, var(--r-md));
+  background: var(--accent-soft);
+  opacity: 0;
+  pointer-events: none;
+  /* 位移和尺寸都走弹簧曲线，过冲压在 3% 内：滑块到站会轻轻顿一下，
+     这一步是整个交互"有质感"的来源，去掉就变成生硬的线性平移。 */
+  transition: transform calc(.32s * var(--anim-scene)) var(--ease-spring),
+              width calc(.32s * var(--anim-scene)) var(--ease-spring),
+              height calc(.32s * var(--anim-scene)) var(--ease-spring),
+              opacity var(--dur-fast) var(--ease-standard);
+}
+.nav-pill.shown { opacity: 1; }
+/* 首次定位不能从 (0,0) 滑过来，关掉这一段过渡 */
+.nav-pill.snap { transition: none !important; }
+
+/* 分段控件里的胶囊要复刻原来 active 的"白底 + 主色内描边" */
+.seg .nav-pill {
+  --pill-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-1);
+}
+
+/* 外观页的 .tabs 没有内边距，胶囊要贴着按钮本身 */
+.tabs { position: relative; z-index: 0; }
+
+.ap-right { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+
+.tabs { display: flex; align-items: center; gap: 4px; padding-bottom: var(--sp-3); border-bottom: 1px solid var(--border); }
+.tab {
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 13.5px; padding: 6px 12px; border-radius: 9px;
+  cursor: pointer; font-family: inherit;
+  transition: background var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+}
+.tab:hover { background: var(--surface-2); color: var(--text); }
+.tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* 胶囊挂上之后底交由 .nav-pill 画（见下方「胶囊指示器」）。
+   这层兜底是故意的：万一脚本没跑起来，选中态还得看得见。 */
+.tabs.pill-on .tab.active,
+.tabs.pill-on .tab.active:hover { background: transparent; }
+.tab-spacer { flex: 1; }
+
+.asset-head {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  font-size: 12.5px; font-weight: 600;
+}
+.asset-head .asset-count { font-weight: 400; color: var(--muted); font-size: 12px; }
+
+/* 卡片宽度上限 168：不设上限时宽窗口下 4 张卡会被拉成大方块 */
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 112px));
+  justify-content: start;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+  align-content: start;
+}
+
+.asset-card {
+  position: relative;
+  display: flex; flex-direction: column;
+  padding: 0; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  cursor: pointer; text-align: left; font-family: inherit; color: var(--text);
+  transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) ease;
+}
+.asset-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.asset-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow-2); }
+
+/* 缩略图槽：棋盘格底纹既是「透明区域」的表意，也让浅色披风有边界 */
+/* 竖长方形，比例贴站立小人（皮肤 16:32、披风 10:16）。
+   不再铺棋盘格——那层底纹是为了「表示透明」，但实际看起来像占位图。 */
+.asset-well {
+  position: relative; height: 158px;
+  display: flex; align-items: center; justify-content: center;
+  /* 顶部留出一条给「纤体 / 内置」那些角标，否则会压在小人头上 */
+  padding-top: 16px;
+  background: transparent;
+}
+
+/* 必须用固定 height：缩略图只有 10×16 / 16×32 像素，
+   max-height 只限上限、不放大，披风会按 10 像素宽显示（几乎看不见）。 */
+.asset-well img {
+  height: 128px; max-height: 128px; max-width: calc(100% - 14px); width: auto;
+  object-fit: contain; image-rendering: pixelated; display: block;
+  filter: drop-shadow(0 1px 3px rgba(16, 24, 40, .22));
+}
+.asset-well img.asset-placeholder {
+  width: 46px; height: 74px; border-radius: 6px;
+  background: linear-gradient(135deg, #5b7cfa, #8f6bff);
+  opacity: .55;
+}
+
+.asset-empty-frame { width: 54px; height: 84px; border: 2px dashed var(--muted); border-radius: var(--r-sm); opacity: .5; }
+.asset-glyph { width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.asset-glyph svg { width: 46px; height: 46px; fill: none; }
+
+.asset-foot {
+  display: flex; align-items: flex-start; gap: var(--sp-2);
+  padding: 9px 12px; min-height: 38px;
+  border-top: 1px solid var(--border);
+}
+.asset-radio {
+  width: 14px; height: 14px; flex: 0 0 auto; margin-top: 2px;
+  border-radius: 50%; border: 2px solid var(--border-strong);
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.asset-card.current .asset-radio {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 3.5px, transparent 3.6px);
+}
+.asset-card .asset-name {
+  font-size: 12.5px; margin: 0; color: var(--text); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word;
+}
+
+.asset-card .asset-badges { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.asset-card .asset-badges .tag {
+  font-size: 10px; padding: 2px 6px; border-radius: 6px;
+  background: rgba(255, 255, 255, .82); color: var(--muted);
+  border-color: transparent;
+  backdrop-filter: blur(4px);
+}
+body[data-theme="dark"] .asset-card .asset-badges .tag { background: rgba(20, 22, 28, .72); }
+
+.ap-right > .muted.small { margin: var(--sp-3) 0 0; line-height: 1.7; max-width: 620px; }
+
+/* ---------------- 右键菜单 ---------------- */
+
+.ctx {
+  position: fixed; z-index: 60; min-width: 132px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+  /* 菜单不是弹窗：132px 的小块套 popIn 的 0.94 缩放会像"从远处飞过来"。
+     它只需要一个"从菜单键位置落下来"的暗示：4px + 3% 缩放，140ms 收工。 */
+  animation: ctxPop calc(.14s * var(--anim-scene)) var(--ease-standard) both;
+}
+@keyframes ctxPop {
+  from { opacity: 0; transform: translate3d(0, -4px, 0) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+.ctx button {
+  display: block; width: 100%; text-align: left;
+  border: 0; background: transparent; color: var(--text);
+  font-size: 12.5px; padding: 7px 10px; border-radius: 7px;
+  cursor: pointer; font-family: inherit;
+}
+.ctx button:hover { background: var(--surface-2); }
+.ctx button.danger { color: var(--danger); }
+
+/* ============================================================================
+   动效与反馈
+   ----------------------------------------------------------------------------
+   手感的四个要素（按重要性排序）：
+     1. 曲线：进场用强 ease-out（头 40% 就把位移走完），离场用更短的 ease-in；
+     2. 时长不对称：进场 240ms、离场 140ms —— 等长会让人觉得「点了没反应」；
+     3. 只动 transform / opacity，其余属性每帧触发布局，是掉帧头号原因；
+     4. 幅度宁小勿大：位移过 12px、缩放过 4% 就开始"晃"，桌面端天天看会烦。
+
+   转场统一读 --anim-scene（压缩过的倍率），控件读 --anim-scale。
+   ========================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  /* 场景级时长：倍率走 --anim-scene，优雅档也不会拖成慢动作 */
+  --dur-enter: calc(.24s * var(--anim-scene));
+  --dur-leave: calc(.12s * var(--anim-scene));
+}
+
+/* 列表批量进场：同一批元素按 --i 依次延迟，总延迟封顶。
+   位移只有 8px —— 列表动效的"重量感"来自透明度，不来自位移。
+   延迟走 scene 倍率：优雅档要能看出先后，极速档不能等。 */
+@keyframes riseIn {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* fill-mode 必须是 backwards 而不是 both：
+   用 both 时动画结束后元素会被钉在最后一帧（transform: none），
+   于是 :hover 的 translateY(-2px) 永远不生效——踩过。 */
+.stagger > * {
+  animation: riseIn var(--dur-enter) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * calc(18ms * var(--anim-scene)));
+}
+
+/* 页面切换：进场比离场慢，切走的那一帧不拖沓。
+   加 0.6% 缩放是为了让新页面"贴"上来，纯位移会显得整块在滑。 */
+.page.on { animation: pageIn var(--dur-enter) var(--ease-out) both; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(.994); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 页头图标：切页时轻弹一下，让"换了个页面"这件事在视线没动的地方也有交代。
+   由 setPageHead 摘掉再挂上 .pop 重播。 */
+@keyframes headIconIn {
+  from { opacity: .35; transform: scale(.84); }
+  to   { opacity: 1; transform: none; }
+}
+#ph-icon.pop { animation: headIconIn calc(.22s * var(--anim-scene)) var(--ease-spring) both; }
+
+/* 卡片按压：按下去 3%，150ms 回弹。
+   只给"能点开"的卡片加，纯展示的卡片按下去会晃，反而显得不牢。 */
+.instance-card,
+.login-card,
+.asset-card,
+.ad-card,
+.noinst-item {
+  transition: border-color var(--dur-fast) ease,
+              transform calc(.22s * var(--anim-scale)) var(--ease-spring),
+              box-shadow var(--dur-fast) ease;
+}
+.instance-card:active,
+.login-card:active,
+.asset-card:active,
+.ad-card:active,
+.noinst-item:active {
+  transform: translateY(0) scale(.972);
+  /* 按下走短时长，松开回到上面那条 220ms 的弹簧曲线 */
+  transition-duration: var(--dur-press);
+}
+
+/* 骨架屏：数据没到之前占位，避免「先空白再跳出来」 */
+@keyframes shimmer {
+  from { background-position: -220px 0; }
+  to   { background-position: 220px 0; }
+}
+.skeleton {
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%);
+  background-size: 440px 100%;
+  animation: shimmer 1.2s linear infinite;
+}
+.skeleton-card { height: 84px; border-radius: var(--r-lg); }
+
+/* ---------------- Toast ---------------- */
+
+.toast-wrap {
+  position: fixed; left: 50%; bottom: 24px; z-index: 70;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 8px;
+  max-width: min(560px, 80vw);
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px; color: var(--text);
+  animation: toastIn var(--dur-enter) var(--ease-out) both;
+}
+.toast.out { animation: toastOut var(--dur-leave) var(--ease-in) both; }
+.toast.error { border-color: rgba(229, 72, 77, .45); }
+.toast::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); flex: 0 0 6px;
+}
+.toast.ok::before { background: #22c55e; }
+.toast.error::before { background: var(--danger); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes toastOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(6px); } }
+
+/* ---------------- 页面细节 ---------------- */
+
+/* 实例卡：加载器用左侧 3px 色条区分，扫一眼就知道哪个是 Fabric / Forge */
+.instance-card::after {
+  content: ''; position: absolute; left: 0; top: 12px; bottom: 12px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--border-strong);
+}
+.instance-card[data-loader="Fabric"]::after { background: #c8b48a; }
+.instance-card[data-loader="Forge"]::after { background: #6f7ea8; }
+.instance-card[data-loader="NeoForge"]::after { background: #d08a4a; }
+.instance-card[data-loader="Quilt"]::after { background: #b06fc0; }
+
+/* 登录入口：加一个方块图标位，卡片不再是两行纯文字 */
+.login-card {
+  position: relative; justify-content: center; min-height: 78px;
+  padding-left: calc(var(--sp-4) + 44px);
+}
+.login-card .login-ico {
+  position: absolute; left: var(--sp-4); top: 50%; transform: translateY(-50%);
+  width: 36px; height: 36px; border-radius: 11px;
+  display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.login-card .login-ico svg { width: 18px; height: 18px; }
+.login-card[data-login="microsoft"] .login-ico { background: rgba(0, 164, 239, .12); color: #0a84c8; }
+.login-card[data-login="authlib"] .login-ico { background: rgba(34, 197, 94, .12); color: #16a34a; }
+body[data-theme="dark"] .login-card[data-login="microsoft"] .login-ico { color: #4cc2ff; }
+body[data-theme="dark"] .login-card[data-login="authlib"] .login-ico { color: #4ade80; }
+
+/* 账号行：选中态加一个右侧标签，否则只有底色差异在暗色下不明显 */
+.account-row.current::after {
+  content: '当前'; font-size: 11px; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 999px; padding: 1px 8px;
+  margin-left: var(--sp-2);
+}
+
+/* 表格行悬停 */
+.table-row:not(.head):hover { background: var(--surface-2); }
+.table-row:not(.head) { cursor: default; }
+
+/* 设置页：一行一个键值，比一坨段落好读 */
+/* 和 .set-row 用同一套列宽：之前 .k 只有 112px，带说明文字的行会被挤成三行 */
+.kv { display: flex; align-items: center; gap: 18px; padding: 12px 2px; border-bottom: 1px solid var(--border); }
+.kv:last-child { border-bottom: 0; }
+.kv .k {
+  flex: 0 0 190px;
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 12.5px; color: var(--text);
+}
+.kv .k .sub { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.kv .v { flex: 1; min-width: 0; font-size: 13px; display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.kv .v > .proxy-grid { justify-content: stretch; }
+/* 设置页分组之间留足气口：卡片连着下一组标题时，太近会看成同一块 */
+.settings-group { margin-bottom: 36px; }
+.settings-group h4 { margin: 0 0 10px; font-size: 13.5px; }
+/* 同一分组里排了两段（比如「关于」卡片 + 「致谢」卡片）：标题前要留出气口，
+   否则下一段的标题会贴着上一段的卡片底边，两块看成一块 */
+.settings-group .card + h4 { margin-top: 32px; }
+.settings-group .card { padding: 6px 18px; }
+
+/* 关于页的致谢名单：按用途分组，一行 = 项目 + 作者 + 地址 */
+.credits { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-4) 18px; }
+.credits-intro { margin: 0; line-height: 1.6; }
+.credit-group { display: flex; flex-direction: column; gap: 4px; }
+.credit-title {
+  font-size: 11.5px; font-weight: 600; color: var(--muted);
+  letter-spacing: .06em; padding: 2px 0 4px;
+}
+.credit-row {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 7px 0; border-bottom: 1px dashed var(--border);
+}
+.credit-row:last-child { border-bottom: 0; }
+.credit-name { flex: 0 0 190px; font-size: 12.5px; font-weight: 500; color: var(--text); }
+.credit-name em {
+  font-style: normal; font-size: 11px; color: var(--muted);
+  margin-left: 6px; font-weight: 400;
+}
+/* 作者列定宽、地址列吃满剩余宽度：三列从左到右一条线，不会在中间留一大块空白 */
+.credit-by { flex: 0 0 210px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+.credit-link {
+  flex: 1; min-width: 0;
+  font-size: 11.5px; color: var(--accent); text-decoration: none;
+  border-bottom: 1px solid transparent; cursor: pointer; word-break: break-all;
+}
+.credit-link:hover { border-bottom-color: var(--accent); }
+
+/* 关于页的更新面板：版本对比、更新说明、下载进度 */
+.update-card { display: flex; flex-direction: column; gap: 10px; }
+.update-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.update-head strong { font-size: 13.5px; }
+.update-notes {
+  margin: 0; max-height: 180px; overflow-y: auto;
+  white-space: pre-wrap; line-height: 1.6; word-break: break-word;
+}
+.update-bar { height: 6px; }
+.update-bar .mem-seg { width: 0; transition: width calc(.2s * var(--anim-scale)) ease; }
+.update-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* 下载页：入口卡统一高度，按钮压到底部对齐 */
+.dl-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); min-height: 168px; }
+.dl-card .dl-head { display: flex; align-items: center; gap: 10px; }
+.dl-card .dl-ico {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.dl-card h4 { margin: 0; font-size: 14px; }
+.dl-card p { margin: 0; }
+.dl-card .btn { margin-top: auto; align-self: flex-start; }
+
+
+/* 微软登录的两种方式：内嵌窗口（授权码流）与复制链接（设备码流）。
+   并排放，别做成主次按钮 —— 两种都能用，没有哪个是「高级选项」。 */
+.lm-mode { display: flex; gap: 8px; margin-bottom: 8px; }
+.lm-mode .btn { flex: 1 1 0; justify-content: center; }
