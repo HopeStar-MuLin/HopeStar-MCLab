@@ -1,0 +1,6 @@
+{
+  "version": "0.2.12",
+  "notes": "首个公开版本。\n· 实例管理：每个版本独立目录，模组 / 存档 / 设置互不干扰\n· 版本安装：原版与 Forge、NeoForge、Fabric、Quilt、Cleanroom、OptiFine\n· 内容下载：模组、整合包、资源包、光影、世界\n· 外观：宽体 / 纤体、披风、鞘翅、盔甲预览，实时 3D；支持纹理导出与批量拖入\n· 账号：离线登录、外置认证\n· 启动：启动后自动隐藏，游戏退出恢复窗口\n· 设置 → 关于：检查更新并一键热更新",
+  "jar": "https://github.com/HopeStar-MuLin/HopeStar-MCLab/releases/latest/download/HopeStar-MCLab.jar",
+  "jarSize": 14456083
+}

@@ -1,0 +1,237 @@
+/* ============================================================================
+   下载完成通知：屏幕右下角、任务栏之上
+   ========================================================================== */
+.done-toasts {
+  position: fixed;
+  right: 20px;
+  /* 任务栏高度按 40px 预留：贴底会被任务栏盖住一半 */
+  bottom: 56px;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.done-toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 288px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  opacity: 0;
+  transform: translateY(10px) scale(.98);
+  transition: opacity calc(.22s * var(--anim-scale)) var(--ease), transform calc(.22s * var(--anim-scale)) var(--ease);
+}
+.done-toast.in { opacity: 1; transform: none; }
+.done-toast.out { opacity: 0; transform: translateY(6px) scale(.98); }
+
+.dt-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #34c759;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dt-icon svg { width: 15px; height: 15px; fill: #fff; }
+.dt-body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dt-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dt-sub { font-size: 11.5px; color: var(--muted); }
+
+/* ============================================================================
+   勾选框：不再是系统原生外观
+   ----------------------------------------------------------------------------
+   原生 checkbox 在 WebView2 里是灰色的方框 + 蓝色对勾，和整套 UI 完全不搭。
+   这里统一成「圆角方块 + 强调色填充 + 白勾」。
+   注意 cursor：全局 `input { cursor: text }` 会让鼠标悬在勾选框上变成 I 形光标，
+   所以 type=checkbox/radio 要单独改回 pointer。
+   ========================================================================== */
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin: 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  transition: background calc(.15s * var(--anim-scale)) var(--ease), border-color calc(.15s * var(--anim-scale)) var(--ease);
+}
+input[type="checkbox"]:hover,
+input[type="radio"]:hover { border-color: var(--accent); }
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* 对勾用两条边画，比塞 svg 省事，缩放到任何尺寸都清楚 */
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4.5px;
+  height: 8.5px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(42deg);
+}
+input[type="radio"] { border-radius: 50%; }
+input[type="radio"]:checked::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #fff;
+}
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled { opacity: .5; cursor: default; }
+
+/* 表单里的即时校验提示（离线登录用户名等） */
+.field-err {
+  margin: -4px 0 6px;
+  font-size: 11.5px;
+  color: #c0392b;
+  line-height: 1.5;
+}
+body[data-theme="dark"] .field-err { color: #f08a84; }
+
+/* 设置卡片里的小节标题（Java / 启动 / 检查…） */
+.set-subtitle {
+  margin: 2px 0 2px;
+  padding: 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.set-row .dlc-input.mono { font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; }
+
+/* 日志两个按钮并排：打开目录 / 导出 */
+.set-row .v.log-actions { display: inline-flex; gap: 8px; }
+
+/* ============================================================================
+   内存滑条 + 三段内存条
+   ----------------------------------------------------------------------------
+   刻度是非线性的（照 PCL-CE 的 GetRamFromTick），所以滑条本身就是唯一输入，
+   不再配数字框。三段条用来表达「已用 / 游戏分配 / 空闲」在物理内存里的占比，
+   比单看一个数字直观得多——尤其能一眼看出分配过多时系统还剩多少。
+   ========================================================================== */
+.mem-panel { padding: 2px 2px 10px; }
+
+.mem-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 1px;
+}
+.mem-title { font-size: 12.5px; color: var(--text); }
+.mem-title .sub { margin-left: 6px; font-size: 11px; color: var(--muted); }
+.mem-value {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 原生 range 的轨道和滑块在两个平台上长相完全不同，这里全部自绘。
+   WebView2 是 Chromium，用 -webkit- 那一套即可。 */
+.mem-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.mem-range::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+.mem-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
+  transition: transform calc(.12s * var(--anim-scale)) var(--ease);
+}
+.mem-range:hover::-webkit-slider-thumb { transform: scale(1.1); }
+.mem-range:active::-webkit-slider-thumb { transform: scale(.96); }
+.mem-range:disabled { opacity: .42; cursor: default; }
+.mem-range:disabled::-webkit-slider-thumb { border-color: var(--border-strong); }
+
+.mem-bar {
+  display: flex;
+  height: 10px;
+  margin-top: 12px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+.mem-seg {
+  height: 100%;
+  /* 拖滑条时宽度会连着变，缓一下才不会像在抖 */
+  transition: width calc(.3s * var(--anim-scale)) cubic-bezier(.22, .61, .36, 1);
+}
+.mem-seg.used { background: linear-gradient(90deg, #7f8cff, #6aa9ff); }
+.mem-seg.game { background: rgba(93, 169, 255, .42); }
+.mem-seg.free { background: var(--surface-3); }
+
+.mem-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.mem-legend b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.mem-legend .dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: 0;
+}
+.mem-legend .dot.used { background: #6aa9ff; }
+.mem-legend .dot.game { background: rgba(93, 169, 255, .42); }
+.mem-legend .dot.free { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--border); }
+
+.mem-warn {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(230, 168, 60, .14);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #8a6a1d;
+}
+body[data-theme="dark"] .mem-warn { background: rgba(230, 168, 60, .18); color: #e3b862; }
+
