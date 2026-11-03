@@ -1,0 +1,560 @@
+/* ============================================================================
+   macOS 皮肤层
+   ----------------------------------------------------------------------------
+   这是**一层皮肤**，不是一套框架。app.css 里那套骨架（标题栏 → rail → 页头 →
+   单滚动容器）一行不动，这里只做两件事：
+
+     1. 覆盖设计令牌（颜色、圆角、阴影、字体）；
+     2. 给少数「长相由结构决定」的组件补差异（标题栏交通灯、侧栏胶囊选中态、
+        按钮的顶部内高光、弹窗的 sheet 形态）。
+
+   作用域全部挂在 body[data-ui="mac"] 下，Windows 皮肤（默认）完全不受影响。
+   明暗是正交维度，所以暗色要单独写一组 `[data-ui="mac"][data-theme="dark"]`：
+   两组选择器优先级相同，谁写在后面谁赢，不单独写会被 app.css 的暗色令牌顶掉。
+
+   玻璃只用两处：标题栏和侧栏。列表、卡片、表格一律不透明 ——
+   backdrop-filter 是逐像素成本，铺满滚动区必然掉帧。
+   ========================================================================== */
+
+/* ---------------- 令牌 ---------------- */
+
+body[data-ui="mac"] {
+  /* 圆角整体比 Windows 皮肤小一档：macOS 的控件是 6–8px，
+     大圆角只留给窗口和 sheet，一屏里圆角种类要少 */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 13px;
+  --r-xl: 16px;
+
+  /* macOS 浅色窗口底是带一点暖的中性灰，不是纯白 */
+  --bg: #ececec;
+  --surface: #ffffff;
+  --surface-2: #f5f5f7;
+  --surface-3: #ebebed;
+  --border: #dcdcdf;
+  --border-strong: #c6c6cb;
+
+  --text: #1d1d1f;
+  --muted: #6e6e73;
+  --danger: #ff3b30;
+
+  /* 毛发线：macOS 大量用 0.5px 描边分隔，而不是 1px 实线 */
+  --mac-hairline: rgba(0, 0, 0, .09);
+  --mac-hairline-strong: rgba(0, 0, 0, .16);
+
+  /* 材质。alpha 单独留变量，降级时把背景换成不透明就行，不用重写规则 */
+  --mac-bar-bg: rgba(246, 246, 248, .72);
+  --mac-side-bg: rgba(240, 240, 243, .68);
+  --mac-blur: 20px;
+
+  /* 阴影：macOS 是「一圈极淡的轮廓 + 一层大范围柔影」，比 Windows 的
+     短促投影更散 */
+  --shadow-1: 0 0 0 .5px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .04);
+  --shadow-2: 0 0 0 .5px rgba(0, 0, 0, .06), 0 2px 8px rgba(0, 0, 0, .06),
+              0 12px 28px rgba(0, 0, 0, .06);
+  --shadow-pop: 0 0 0 .5px rgba(0, 0, 0, .08), 0 10px 30px rgba(0, 0, 0, .14),
+                0 30px 70px rgba(0, 0, 0, .16);
+  --card-inner: inset 0 .5px 0 rgba(255, 255, 255, .9);
+
+  /* SF Pro 在 Windows 不存在，-apple-system 也不认。
+     Segoe UI Variable 是 Windows 上最接近的一支，后面才是兜底。
+     把字距收一点，因为 SF 比 Segoe 更紧，不收会显得松散。 */
+  --mac-font: -apple-system, "SF Pro Text", "SF Pro Display",
+              "Segoe UI Variable Text", "Segoe UI",
+              "PingFang SC", "Microsoft YaHei UI", sans-serif;
+}
+
+body[data-ui="mac"][data-theme="dark"] {
+  --bg: #1c1c1e;
+  --surface: #2a2a2c;
+  --surface-2: #313133;
+  --surface-3: #3a3a3c;
+  --border: #3a3a3c;
+  --border-strong: #4a4a4d;
+
+  --text: #f2f2f7;
+  --muted: #9a9aa0;
+  --danger: #ff453a;
+
+  --mac-hairline: rgba(255, 255, 255, .1);
+  --mac-hairline-strong: rgba(255, 255, 255, .18);
+
+  --mac-bar-bg: rgba(38, 38, 40, .72);
+  --mac-side-bg: rgba(32, 32, 34, .7);
+
+  --shadow-1: 0 0 0 .5px rgba(0, 0, 0, .5), 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-2: 0 0 0 .5px rgba(0, 0, 0, .55), 0 2px 8px rgba(0, 0, 0, .35),
+              0 12px 28px rgba(0, 0, 0, .3);
+  --shadow-pop: 0 0 0 .5px rgba(0, 0, 0, .6), 0 10px 30px rgba(0, 0, 0, .5),
+                0 30px 70px rgba(0, 0, 0, .5);
+  --card-inner: inset 0 .5px 0 rgba(255, 255, 255, .06);
+}
+
+body[data-ui="mac"] {
+  font-family: var(--mac-font);
+  letter-spacing: -.008em;
+}
+
+/* ---------------- 标题栏 + 交通灯 ---------------- */
+
+body[data-ui="mac"] .titlebar {
+  height: 40px;
+  flex-basis: 40px;
+  background: var(--mac-bar-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(var(--mac-blur));
+  backdrop-filter: saturate(180%) blur(var(--mac-blur));
+  border-bottom: .5px solid var(--mac-hairline);
+  position: relative;
+  /* 提到独立合成层：页面滚动时标题栏是静止的，
+     分层后不会跟着内容一起重绘 */
+  transform: translateZ(0);
+}
+
+/* 标题居中。macOS 的窗口标题永远是居中的灰字，不是左边的品牌块 */
+body[data-ui="mac"] .tb-brand {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0;
+  pointer-events: none;
+}
+body[data-ui="mac"] .tb-brand .brand-mark { display: none; }
+body[data-ui="mac"] .tb-brand strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -.01em;
+  opacity: .82;
+}
+
+/* 交通灯容器。Windows 皮肤下它在右侧（order 归位），mac 下移到最左 */
+body[data-ui="mac"] .tb-lights {
+  order: -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 0 13px;
+  flex: 0 0 auto;
+}
+
+body[data-ui="mac"] .win-btn {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  border: .5px solid rgba(0, 0, 0, .12);
+  display: grid;
+  place-items: center;
+  color: transparent;
+  /* 三个圆点的颜色是 macOS 的固定色，不跟着主题色变 */
+  background: #d3d3d6;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+body[data-ui="mac"] #win-close { background: #ff5f57; }
+body[data-ui="mac"] #win-min { background: #febc2e; }
+body[data-ui="mac"] #win-max { background: #28c840; }
+
+body[data-ui="mac"] .win-btn svg {
+  width: 7px;
+  height: 7px;
+  stroke-width: 1.6;
+  opacity: 0;
+  transition: opacity var(--dur-fast) ease;
+}
+/* 符号只在鼠标悬停整组时出现，和 macOS 一致 */
+body[data-ui="mac"] .tb-lights:hover .win-btn svg { opacity: .62; }
+body[data-ui="mac"] .win-btn:hover { color: #000; }
+body[data-ui="mac"] .win-btn.close:hover { background: #ff3b30; color: #4d0000; }
+body[data-ui="mac"] .win-btn.close:hover svg { opacity: .85; }
+
+/* 窗口失焦（点开其它应用）时三个圆点变灰 —— 这是 macOS 的强信号，
+   用 body 的 active/focus 判断不了，交给 :not(:focus-within) 近似模拟 */
+body[data-ui="mac"] .titlebar:not(:focus-within) .win-btn { background: #d3d3d6; }
+body[data-ui="mac"] .titlebar:not(:focus-within) .tb-lights:hover .win-btn svg { opacity: 0; }
+
+/* 主题按钮留在右侧，做成 toolbar 图标的样子 */
+body[data-ui="mac"] .tb-actions { gap: 4px; padding-right: 10px; }
+body[data-ui="mac"] .tb-divider { display: none; }
+body[data-ui="mac"] .icon-btn {
+  width: 28px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+body[data-ui="mac"] .icon-btn:hover { background: rgba(0, 0, 0, .06); color: var(--text); }
+body[data-ui="mac"][data-theme="dark"] .icon-btn:hover { background: rgba(255, 255, 255, .08); }
+
+/* ---------------- 侧栏 ---------------- */
+
+body[data-ui="mac"] { --rail-w: 64px; --rail-w-open: 216px; }
+
+body[data-ui="mac"] .rail {
+  background: var(--mac-side-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(var(--mac-blur));
+  backdrop-filter: saturate(180%) blur(var(--mac-blur));
+  border-right: .5px solid var(--mac-hairline);
+  transform: translateZ(0);
+}
+
+/* 选中态是灰色胶囊，不是主题色块 —— macOS 侧栏只在图标上染色 */
+body[data-ui="mac"] .rail-item {
+  border-radius: 7px;
+  justify-content: flex-start;
+  padding-left: 11px;
+  color: var(--text);
+  font-weight: 500;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+body[data-ui="mac"] .rail-item.on {
+  background: rgba(0, 0, 0, .08);
+  color: var(--text);
+}
+body[data-ui="mac"] .rail-item.on svg { color: var(--accent); }
+body[data-ui="mac"] .rail-item:not(.on):hover { background: rgba(0, 0, 0, .04); }
+body[data-ui="mac"][data-theme="dark"] .rail-item.on { background: rgba(255, 255, 255, .1); }
+body[data-ui="mac"][data-theme="dark"] .rail-item:not(.on):hover { background: rgba(255, 255, 255, .06); }
+
+body[data-ui="mac"] .rail-label { font-size: 13px; letter-spacing: -.01em; }
+
+/* ---------------- 页头 ---------------- */
+
+body[data-ui="mac"] .page-head {
+  height: 52px;
+  background: var(--mac-bar-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(var(--mac-blur));
+  backdrop-filter: saturate(180%) blur(var(--mac-blur));
+  border-bottom: .5px solid var(--mac-hairline);
+  padding: 0 22px;
+}
+body[data-ui="mac"] .ph-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--accent);
+}
+body[data-ui="mac"] .ph-icon svg { width: 17px; height: 17px; }
+body[data-ui="mac"] .ph-title { font-size: 15px; font-weight: 650; letter-spacing: -.015em; }
+body[data-ui="mac"] .ph-desc { font-size: 11.5px; color: var(--muted); }
+
+/* ---------------- 按钮 ---------------- */
+
+/* macOS 的普通按钮是「白底 + 极细描边 + 顶部内高光」，
+   不是纯平面也不是重渐变 */
+body[data-ui="mac"] .btn {
+  border-radius: 7px;
+  border: .5px solid var(--mac-hairline-strong);
+  background: linear-gradient(#ffffff, #f4f4f6);
+  color: var(--text);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .95), 0 .5px 1.5px rgba(0, 0, 0, .07);
+  font-weight: 500;
+  letter-spacing: -.01em;
+}
+body[data-ui="mac"] .btn:hover { background: linear-gradient(#ffffff, #eeeff2); }
+body[data-ui="mac"] .btn:active {
+  background: linear-gradient(#ececef, #f2f2f4);
+  transform: none;
+  box-shadow: inset 0 .5px 2px rgba(0, 0, 0, .08);
+}
+body[data-ui="mac"] .btn.ghost {
+  background: transparent;
+  border-color: var(--mac-hairline-strong);
+  box-shadow: none;
+}
+body[data-ui="mac"] .btn.ghost:hover { background: rgba(0, 0, 0, .05); }
+
+/* 主按钮用系统蓝，不跟主题色 —— macOS 的默认按钮就是蓝的 */
+body[data-ui="mac"] .btn.primary {
+  background: linear-gradient(#2f8cff, #0a74f0);
+  border-color: rgba(0, 60, 140, .35);
+  color: #fff;
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .35), 0 1px 2px rgba(10, 90, 200, .3);
+}
+body[data-ui="mac"] .btn.primary:hover { background: linear-gradient(#3b93ff, #1180f7); }
+body[data-ui="mac"][data-theme="dark"] .btn {
+  background: linear-gradient(#3a3a3d, #303033);
+  border-color: rgba(255, 255, 255, .14);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .1), 0 .5px 1.5px rgba(0, 0, 0, .4);
+}
+body[data-ui="mac"][data-theme="dark"] .btn:hover { background: linear-gradient(#424246, #38383b); }
+body[data-ui="mac"][data-theme="dark"] .btn.ghost { background: transparent; }
+
+/* ---------------- 分段控件 ---------------- */
+
+body[data-ui="mac"] .seg {
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .05);
+  border: .5px solid var(--mac-hairline);
+  padding: 1px;
+}
+body[data-ui="mac"] .seg button {
+  border-radius: 6px;
+  font-weight: 500;
+  padding: 4px 13px;
+}
+body[data-ui="mac"] .seg button.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  /* macOS 的选中块靠阴影浮起来，不靠主题色描边 */
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .06), 0 1px 2px rgba(0, 0, 0, .12);
+}
+body[data-ui="mac"][data-theme="dark"] .seg { background: rgba(255, 255, 255, .07); }
+body[data-ui="mac"][data-theme="dark"] .seg button.active {
+  background: #48484a;
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .3), 0 1px 2px rgba(0, 0, 0, .4);
+}
+
+/* ---------------- 输入类 ---------------- */
+
+body[data-ui="mac"] .ad-select,
+body[data-ui="mac"] .set-num,
+body[data-ui="mac"] input[type="text"],
+body[data-ui="mac"] input[type="password"],
+body[data-ui="mac"] input[type="number"],
+body[data-ui="mac"] textarea {
+  border-radius: 6px;
+  border: .5px solid var(--mac-hairline-strong);
+  background: var(--surface);
+  box-shadow: inset 0 .5px 2px rgba(0, 0, 0, .05);
+  font-family: inherit;
+}
+body[data-ui="mac"] .ad-select:focus,
+body[data-ui="mac"] .set-num:focus,
+body[data-ui="mac"] input:focus,
+body[data-ui="mac"] textarea:focus {
+  outline: none;
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, .28);
+}
+
+/* 开关：macOS 是「胶囊轨道 + 白色圆点拇指」。
+   ------------------------------------------------------------------
+   这里踩了个坑：这版 WebView2 的原生 checkbox，在 appearance:none 之后
+   仍然会画那个白色对勾（实测把背景涂成纯红、accent-color 设成 transparent，
+   勾都盖不掉 —— 它是 UA 的前景层，不是背景）。
+   所以不能直接改 input 的外形，只能：
+     1. 让 input 透明，只留 38×22 的点击区；
+     2. 开关画在它的父容器 .v 的 ::after 上（absolute 定位盖住 input）；
+     3. 开/关状态用 :has(> .set-check:checked) 联动。
+   整段包在 @supports selector(:has(*)) 里：老浏览器不认 :has 时这段完全不生效，
+   退回原生复选框 —— 不会留下"拉长的方框"这种半成品。 */
+
+@supports selector(:has(*)) {
+  body[data-ui="mac"] .v:has(> .set-check) { position: relative; }
+
+  body[data-ui="mac"] .v:has(> .set-check) > .set-check {
+    width: 38px;
+    height: 22px;
+    margin: 0;
+    flex: none;
+    /* 勾还在，只是看不见；点击、键盘焦点都由它自己处理 */
+    opacity: 0;
+    cursor: pointer;
+    z-index: 1;
+  }
+
+  body[data-ui="mac"] .v:has(> .set-check)::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    width: 38px;
+    height: 22px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background-color: rgba(120, 120, 128, .32);
+    /* 拇指：22×22 的图层里画一个 17px 白圆，靠 background-position 平移 */
+    /* 末尾那个 transparent 不能省：径向渐变在最后一个色标之后会继续用该色
+       填满整个图层，少了它，22px 图层的左边界会在轨道上留下一条竖线。 */
+    background-image: radial-gradient(circle at 50% 50%, #fff 8.5px, rgba(0, 0, 0, .06) 9px, transparent 9.5px);
+    background-size: 22px 22px;
+    background-repeat: no-repeat;
+    background-position: 0 0;
+    box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .06);
+    pointer-events: none;
+    transition: background-color calc(.22s * var(--anim-scale)) ease,
+                background-position .22s cubic-bezier(.32, .72, 0, 1);
+  }
+
+  body[data-ui="mac"] .v:has(> .set-check:checked)::after {
+    background-color: #34c759;
+    background-position: 16px 0;
+  }
+
+  body[data-ui="mac"] .v:has(> .set-check:focus-visible)::after {
+    box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .06), 0 0 0 3px rgba(10, 132, 255, .35);
+  }
+
+  body[data-ui="mac"][data-theme="dark"] .v:has(> .set-check)::after {
+    background-color: rgba(120, 120, 128, .44);
+  }
+  body[data-ui="mac"][data-theme="dark"] .v:has(> .set-check:checked)::after {
+    background-color: #30d158;
+  }
+}
+
+/* ---------------- 卡片与列表 ---------------- */
+
+body[data-ui="mac"] .card {
+  border: .5px solid var(--mac-hairline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+
+body[data-ui="mac"] .inst-item,
+body[data-ui="mac"] .world-item,
+body[data-ui="mac"] .ad-card,
+body[data-ui="mac"] .asset-card {
+  border: .5px solid var(--mac-hairline);
+  border-radius: 8px;
+  background: var(--surface);
+}
+body[data-ui="mac"] .inst-item:hover,
+body[data-ui="mac"] .ad-card:hover { border-color: var(--mac-hairline-strong); }
+
+body[data-ui="mac"] .inst-item.on,
+body[data-ui="mac"] .rail-item.on { border-color: transparent; }
+
+/* 设置页的分区导航：macOS 用「小组标题」而不是下划线标签 */
+body[data-ui="mac"] .settings-nav { border-bottom: .5px solid var(--mac-hairline); }
+body[data-ui="mac"] .settings-nav button { border-radius: 6px; }
+body[data-ui="mac"] .settings-nav button.on {
+  background: rgba(0, 0, 0, .06);
+  /* 文字跟着变深：macOS 的选中标签是「灰底 + 深字」，
+     保留主题色文字会和旁边的未选中项拉不开层次 */
+  color: var(--text);
+}
+body[data-ui="mac"][data-theme="dark"] .settings-nav button.on { background: rgba(255, 255, 255, .1); }
+
+body[data-ui="mac"] .table-row.head { background: transparent; }
+body[data-ui="mac"] .table-row { border-bottom: .5px solid var(--mac-hairline); }
+
+/* ---------------- 弹窗 / 菜单 ---------------- */
+
+/* macOS 的对话框是「无边框、大圆角、很深的投影」，遮罩比 Windows 轻 */
+body[data-ui="mac"] .modal {
+  background: rgba(0, 0, 0, .28);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+body[data-ui="mac"] .modal-body {
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: .5px solid var(--mac-hairline);
+  box-shadow: var(--shadow-pop);
+  padding: 22px;
+  animation: macSheet var(--dur) var(--ease) both;
+}
+@keyframes macSheet {
+  from { opacity: 0; transform: translateY(-8px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+
+body[data-ui="mac"] .ctx {
+  border-radius: 8px;
+  border: .5px solid var(--mac-hairline);
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+}
+body[data-ui="mac"] .ctx button { border-radius: 5px; padding: 5px 10px; }
+
+body[data-ui="mac"] .toast { border-radius: 10px; }
+
+/* ---------------- 滚动条 ---------------- */
+
+/* macOS 是 overlay 滚动条：不占位、默认几乎看不见、滚动时才浮出来 */
+body[data-ui="mac"] ::-webkit-scrollbar { width: 9px; height: 9px; }
+body[data-ui="mac"] ::-webkit-scrollbar-track { background: transparent; }
+body[data-ui="mac"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .22);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background calc(.12s * var(--anim-scale)) ease;
+}
+body[data-ui="mac"] ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, .38); background-clip: content-box; }
+body[data-ui="mac"][data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .22); background-clip: content-box; }
+
+/* ---------------- 降级 ---------------- */
+
+/* 没有 backdrop-filter（老 WebView2 / 软件合成）就直接给不透明底。
+   宁可少一层玻璃，也不能让标题栏透出内容变成一锅粥 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  body[data-ui="mac"] .titlebar,
+  body[data-ui="mac"] .page-head,
+  body[data-ui="mac"] .rail {
+    background: var(--surface);
+  }
+  body[data-ui="mac"] .modal { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* 系统开了「降低透明度」：全部换成实心，这是 macOS 自己的行为 */
+@media (prefers-reduced-transparency: reduce) {
+  body[data-ui="mac"] .titlebar,
+  body[data-ui="mac"] .page-head,
+  body[data-ui="mac"] .rail {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  body[data-ui="mac"] .modal { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(0, 0, 0, .45); }
+}
+
+/* 手动开关：老显卡 / 远程桌面下用户自己关掉玻璃 */
+body[data-ui="mac"].no-glass .titlebar,
+body[data-ui="mac"].no-glass .page-head,
+body[data-ui="mac"].no-glass .rail {
+  background: var(--surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+body[data-ui="mac"].no-glass .modal { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* ---------------- 标签页与自定义下拉 ---------------- */
+
+/* 页内标签（下载页的「游戏版本 / 整合包 / 模组…」）：
+   macOS 的选中态是「白色浮起块 + 深色字」，不是主题色胶囊 */
+body[data-ui="mac"] .tabs {
+  border-bottom: .5px solid var(--mac-hairline);
+  gap: 2px;
+}
+body[data-ui="mac"] .tab { border-radius: 6px; font-weight: 500; }
+body[data-ui="mac"] .tab:hover { background: rgba(0, 0, 0, .04); color: var(--text); }
+body[data-ui="mac"] .tab.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 0 0 .5px var(--mac-hairline), 0 1px 2px rgba(0, 0, 0, .1);
+}
+body[data-ui="mac"][data-theme="dark"] .tab:hover { background: rgba(255, 255, 255, .06); }
+body[data-ui="mac"][data-theme="dark"] .tab.active {
+  background: #48484a;
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .35), 0 1px 2px rgba(0, 0, 0, .4);
+}
+
+/* 自绘下拉（.cs-btn 是那层假按钮，原生 select 藏在下面） */
+body[data-ui="mac"] .cs-btn {
+  border: .5px solid var(--mac-hairline-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: inset 0 .5px 2px rgba(0, 0, 0, .04);
+}
+body[data-ui="mac"] .cs-btn:hover { background: var(--surface); border-color: var(--mac-hairline-strong); }
+body[data-ui="mac"] .cs-btn.open {
+  border-color: #0a84ff;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, .25);
+}
+body[data-ui="mac"] .cs-menu {
+  border-radius: 8px;
+  border: .5px solid var(--mac-hairline);
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+}
+body[data-ui="mac"] .cs-menu button { border-radius: 5px; }
+
+/* 拖拽遮罩在 mac 皮肤下用实线细边，虚线是 Windows 的观感 */
+body[data-ui="mac"] .drop-card {
+  border: 1px solid var(--mac-hairline-strong);
+  border-radius: 14px;
+}
