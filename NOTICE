@@ -1,0 +1,77 @@
+HopeStar-MCLab
+==============
+
+本程序是自由软件：你可以依据 GNU 通用公共许可证第 3 版（或你选择的任何更新版本）
+的条款重新发布和/或修改它。完整许可文本见同目录下的 LICENSE。
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See the LICENSE file for the full text.
+
+
+上游
+----
+
+本仓库是 HMCL 的修改版（modified version），不是上游原版。
+按 GPL-3.0 第 5 条在此声明修改，并给出版权归属：
+
+    HMCL — Hello Minecraft! Launcher
+    https://github.com/HMCL-dev/HMCL
+    Copyright (C) 2020-2026 huangyuhui <huanghongxun2008@126.com> and contributors
+    Licensed under GNU General Public License v3.0
+
+本仓库新增与修改的部分：
+    Copyright (C) 2026 HopeStar-MCLab contributors
+    同样以 GNU General Public License v3.0 发布。
+
+
+修改说明（GPL-3.0 §5a）
+-----------------------
+
+修改自 2026 年 10 月起，主要改动：
+
+1. 新增 WebView 前端：`HMCL/HMCL/src/main/resources/assets/web/`（HTML/CSS/JS），
+   以及 `org/jackhuang/hmcl/ui/web/` 下的桥接与各服务类
+   （DownloadService / AddonService / AppearanceStore / SettingsService 等）。
+2. 新增 Tauri + WebView2 桌面外壳 `shell/`，替代 JavaFX 作为可选界面模式。
+3. 安装链路改造：Cleanroom 实例自动附带 Fugue 与 Scalar Legacy 兼容补丁；
+   加载器可用版本前置校验；下载进度按文件数聚合。
+4. 界面调整：统一下拉框样式、版本选择弹窗二次确认、清理说明文案等。
+5. 更换应用图标与名称（HopeStar-MCLab）。
+
+逐条改动记录见 git 提交历史与 `docs/`。
+
+第三方组件
+----------
+
+本程序集成或调用下列第三方项目（各自遵守其许可证，作者与地址见 README 的「致谢」一节）：
+
+- HMCL — huangyuhui 及贡献者 — https://github.com/HMCL-dev/HMCL （GPL-3.0，本仓库的上游）
+- Tauri — Tauri Contributors — https://github.com/tauri-apps/tauri （MIT / Apache-2.0）
+- WebView2 — Microsoft — https://learn.microsoft.com/microsoft-edge/webview2/
+- JavaFX (OpenJFX) — OpenJDK 社区 — https://github.com/openjdk/jfx （GPL-2.0 + Classpath Exception）
+- three.js — Ricardo Cabello (mrdoob) 及贡献者 — https://github.com/mrdoob/three.js （MIT）
+- skinview3d — Blessing Skin 社区 — https://github.com/bs-community/skinview3d （MIT）
+- esbuild — Evan Wallace — https://github.com/evanw/esbuild （MIT）
+- Oracle JDK 21（jlink 裁剪为 runtime/） — Oracle Corporation
+- authlib-injector — yushijinhun — https://github.com/yushijinhun/authlib-injector （AGPL-3.0）
+- BMCLAPI — bangbang93 — https://github.com/bangbang93/BMCLAPI
+
+数据来源：Mojang 版本清单与资源（Mojang Studios）、Modrinth、CurseForge（Overwolf）、
+LittleSkin。游戏与加载器（Minecraft、Fabric、Quilt、Forge、NeoForge、Cleanroom、OptiFine、
+Fugue、Scalar Legacy）分别归其各自作者所有。
+
+皮肤、盔甲与物品贴图取自 Minecraft 1.21.1 / 1.21.9 客户端，版权归 Mojang Studios。
+
+分发要求
+--------
+
+分发本程序的二进制或源码时，请：
+
+- 保留 LICENSE、本 NOTICE 及源码中各文件原有的版权声明；
+- 一并提供对应源码（本仓库即可），并同样以 GPL-3.0 授权，不额外附加限制；
+- 说明这是修改版，不要以「HMCL 官方」或上游名义发布。
+
+名称与图标不在 GPL-3.0 的授权范围内：上游的 HMCL 名称、图标、以及本仓库的
+HopeStar-MCLab 名称与图标，均不随代码许可一并授予商标使用权。
