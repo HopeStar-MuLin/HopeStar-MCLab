@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "login-window",
+  "description": "微软登录子窗口要加载外部登录页。Tauri 2 默认拦掉所有非本地导航，不在这里放行就是一片白。",
+  "windows": ["microsoft-login"],
+  "remote": {
+    "urls": [
+      "https://login.live.com/*",
+      "https://login.microsoftonline.com/*",
+      "https://account.live.com/*",
+      "https://login.microsoft.com/*",
+      "https://*.live.com/*",
+      "https://*.microsoft.com/*",
+      "https://*.microsoftonline.com/*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-set-focus"
+  ]
+}
