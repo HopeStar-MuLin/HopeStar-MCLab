@@ -1,0 +1,696 @@
+/* ============================================================================
+   HopeStar-MCLab Web UI
+   ----------------------------------------------------------------------------
+   视觉是自己的（渐变 Hero、胶囊选中态、圆角窗控、棋盘格缩略图槽）。
+   从 HopeStar-Desktop 只借了「怎么让同一份页面在任意窗口尺寸下都不塌」这套骨架：
+
+     标题栏（自绘，38px）
+       └ desk-body
+           ├ rail   图标条 64px ⇄ 展开 196px（宽度过渡 + 文案淡入）
+           └ content
+               ├ page-head  固定：图标 + 标题 + 描述 + 页面动作
+               └ page-body  唯一滚动容器
+
+   三条硬规矩：
+     1. 页面里不许出现第二个滚动容器，否则矮窗口会「内层滚完外层滚」，
+        看起来就像内容被裁掉。
+     2. 宽度靠 auto-fit 网格 + 断点折栏解决，高度靠压缩纵向节奏解决，
+        两者不混用——混用会让「窄但高」和「宽但矮」两种窗口都调不好。
+     3. 页面标题放页头，不放标题栏：标题栏只负责窗口身份与窗口操作。
+   ========================================================================== */
+
+/* ---------------- 设计令牌 ---------------- */
+
+:root {
+  /* 间距刻度。sp-1 / sp-2 留给图标与文字这类紧凑关系，
+     sp-3 起是版面间距，整体比早期版本松一档（页面别贴着窗口边） */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 14px;
+  --sp-4: 20px; --sp-5: 26px; --sp-6: 34px;
+
+  /* 圆角：随尺寸递进，避免同一屏里出现 7 种圆角 */
+  --r-sm: 8px;  --r-md: 12px; --r-lg: 16px; --r-xl: 20px;
+
+  /* 动效：三档时长 + 三条曲线。
+     所有时长都乘 --anim-scale（设置 → 启动器 → 动画速度）。
+
+     **两套倍率**，这是手感的关键：
+       --anim-scale  控件级（hover / 按压 / 底色），跟着档位线性放大；
+       --anim-scene  场景级（整页进场、弹窗、菜单），放大得更克制。
+     一套倍率走到底会出事：以前优雅档把弹窗拉到 800ms，点一下要等快一秒才站稳，
+     那不是在"优雅"，是在让人怀疑没点上。大块转场一旦超过 400ms 就从"从容"
+     变成"迟钝"，所以它必须自己封顶，和控件分开走。
+
+     曲线分三种用途，别再用裸 ease：
+       emphasized  大块转场。起步极快、尾巴拉长，前半段就把位移走完。
+       standard    控件。收得干脆，不拖尾，鼠标移开时不会"跟手"。
+       spring      小元素回弹（按压、胶囊滑块、弹窗）。过冲压在 3% 以内，
+                   再大就成了弹簧玩具，在桌面端用一整天会烦。 */
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-emphasized: cubic-bezier(.16, 1, .3, 1);
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-spring: cubic-bezier(.34, 1.28, .64, 1);
+  --anim-scale: 1;
+  --anim-scene: 1;
+  /* 按下要"立刻"有反馈：90ms 到 .965，比任何视觉提示都直接 */
+  --dur-press: calc(.09s * var(--anim-scale));
+  --dur-fast: calc(.16s * var(--anim-scale));
+  --dur: calc(.26s * var(--anim-scale));
+  --dur-slow: calc(.4s * var(--anim-scale));
+
+  /* 结构尺寸。rail 收起 = 64（容得下 40px 图标 + 12px 内边），
+     展开 = 196（够放「外置认证」这类 4 字标签） */
+  --tb-h: 38px;
+  --rail-w: 64px;
+  --rail-w-open: 196px;
+  --head-h: 58px;
+
+  /* 表面层级：页面底 → 卡片 → 卡片内凹槽 → 悬停 */
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --surface-2: #f7f8fa;
+  --surface-3: #eef0f4;
+  --border: #e5e8ee;
+  --border-strong: #d6dae2;
+
+  --text: #16181d;
+  --muted: #6b7280;
+  /* 主题色。--a1/--a2/--as1/--as2 由 JS 在切换配色时写入，
+     这里给的是默认值（靛蓝）。分亮色/暗色两套是因为同一个色相在深底上
+     需要更高的明度才够清楚，直接用一套会有一边发闷。 */
+  --accent: var(--a1, #2fa76b);
+  --accent-soft: var(--as1, #effbf5);
+  --danger: #e5484d;
+
+  /* 卡片阴影。两层极轻的叠在一起，比单层稍大的那个更像纸片浮起来：
+     近处一层压暗边缘，远处一层拉开距离。数值刻意压得很低——
+     看得清但不会注意到的程度，太重反而显得脏。 */
+  --shadow-1: 0 1px 2px rgba(16, 24, 40, .05), 0 1px 1px rgba(16, 24, 40, .02);
+  --shadow-2: 0 6px 18px rgba(16, 24, 40, .06), 0 2px 4px rgba(16, 24, 40, .035);
+  --shadow-pop: 0 12px 40px rgba(16, 24, 40, .16), 0 2px 6px rgba(16, 24, 40, .05);
+  /* 卡片顶部的内高光，让纯白卡片有一点厚度 */
+  --card-inner: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+body[data-theme="dark"] {
+  --bg: #0e1015;
+  --surface: #16191f;
+  --surface-2: #1b1f27;
+  --surface-3: #212631;
+  --border: #262b36;
+  --border-strong: #333a48;
+
+  --text: #edf0f6;
+  --muted: #98a1b2;
+  --accent: var(--a2, #4ac98a);
+  --accent-soft: var(--as2, #25372e);
+
+  /* 暗色不做「阴影」做「柔光」：深色背景上压暗是看不出来的，
+     改用一点带蓝的扩散光，卡片边缘才会和背景分开。
+     半径给得大、透明度给得小，只在边缘隐约看到一圈。 */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .35), 0 0 14px rgba(122, 150, 255, .05);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, .45), 0 0 22px rgba(122, 150, 255, .06);
+  --shadow-pop: 0 14px 44px rgba(0, 0, 0, .6), 0 0 28px rgba(122, 150, 255, .07);
+  --card-inner: inset 0 1px 0 rgba(255, 255, 255, .035);
+}
+
+/* ---------------- 基础 ---------------- */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%; overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none; user-select: none;
+}
+
+body { display: flex; flex-direction: column; }
+
+svg { width: 18px; height: 18px; fill: currentColor; flex: 0 0 auto; }
+.muted { color: var(--muted); }
+.small { font-size: 12.5px; }
+.hidden, [hidden] { display: none !important; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+
+/* 细滚动条：WebKit 默认 15px 会把卡片右侧挤出一道白边 */
+.page-body::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.asset-grid::-webkit-scrollbar { width: 9px; height: 9px; }
+.page-body::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb,
+.asset-grid::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 5px; border: 2px solid transparent;
+  background-clip: content-box;
+}
+.page-body::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+.page-body::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------------- 标题栏 ---------------- */
+
+.titlebar {
+  height: var(--tb-h); flex: 0 0 var(--tb-h);
+  display: flex; align-items: center;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  -webkit-user-select: none; user-select: none;
+}
+
+.tb-brand { display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3); flex: 0 0 auto; }
+.tb-brand strong { font-size: 12.5px; font-weight: 700; letter-spacing: .2px; }
+.brand-mark {
+  width: 19px; height: 19px;
+  /* 像素风图标别让浏览器插值糊掉 */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: pixelated;
+  /* 阴影做在图片上，比原来套圆角背景干净 */
+  filter: drop-shadow(0 2px 6px rgba(91, 124, 250, .35));
+}
+
+/* 拖拽区：占满中间，双击 = 最大化/还原 */
+.tb-drag { flex: 1; height: 100%; min-width: 24px; }
+
+.tb-actions { display: flex; align-items: center; gap: 2px; padding-right: 0; flex: 0 0 auto; }
+/* 窗控单独一层，两套皮肤用 order 决定放左还是放右（见 ui-mac.css）。
+   Windows 皮肤下排在最后、贴右边 —— 和改动前的位置、间距完全一致。 */
+.tb-lights { display: flex; align-items: center; gap: 2px; padding-right: 6px; flex: 0 0 auto; }
+.tb-divider { width: 1px; height: 14px; background: var(--border); margin: 0 var(--sp-2); }
+
+.icon-btn {
+  width: 30px; height: 26px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.icon-btn svg { width: 15px; height: 15px; }
+
+/* 窗口按钮：沿用本项目原有的圆角按钮（不是 Windows 那种贴边方块），
+   但把高度撑满标题栏，点起来更跟手 */
+.win-btn {
+  width: 34px; height: 28px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--muted); cursor: pointer;
+  display: grid; place-items: center;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.win-btn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: round; }
+.win-btn:hover { background: var(--surface-3); color: var(--text); }
+.win-btn.close:hover { background: #e81123; color: #fff; }
+.win-btn.close:active { background: #c50f1f; color: #fff; }
+
+.icon-sun { display: none; }
+body[data-theme="dark"] .icon-moon { display: none; }
+body[data-theme="dark"] .icon-sun { display: block; }
+
+/* 窗口缩放热区 */
+.rz { position: fixed; z-index: 30; }
+.rz-n { top: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+.rz-s { bottom: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+.rz-w { left: 0; top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+.rz-e { right: 0; top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+.rz-nw { left: 0; top: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+.rz-ne { right: 0; top: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.rz-sw { left: 0; bottom: 0; width: 10px; height: 10px; cursor: nesw-resize; }
+.rz-se { right: 0; bottom: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+
+/* ---------------- 主体：rail + content ---------------- */
+
+.desk-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+.rail {
+  width: var(--rail-w); flex: 0 0 auto;
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--sp-3) 0 var(--sp-2);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  /* 高度不够时允许滚动：窗口压到 620 以下、或者开了系统放大时，
+     五个导航项 + 账号卡 + 收起按钮会顶出可视区，之前 overflow:hidden
+     直接把头像裁成半个方块，看着像错位。 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  /* 只动 width（rail 是唯一允许变宽的容器，页面内容不受影响）。
+     宽度变化是"空间"级别的转场，走 scene 倍率和 emphasized 曲线：
+     起步快、尾巴长，和内容区让位的过程对得上。 */
+  transition: width calc(.26s * var(--anim-scene)) var(--ease-emphasized),
+              padding calc(.26s * var(--anim-scene)) var(--ease-emphasized);
+}
+.rail::-webkit-scrollbar { width: 0; height: 0; }
+.rail-nav, .rail-foot { flex: 0 0 auto; }
+
+body.rail-open .rail {
+  width: var(--rail-w-open);
+  align-items: stretch;
+  padding-left: var(--sp-2); padding-right: var(--sp-2);
+}
+
+.rail-nav { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+body.rail-open .rail-nav { align-items: stretch; }
+
+.rail-item {
+  position: relative;
+  width: 40px; height: 40px; margin-top: 2px;
+  border: 0; border-radius: 11px; padding: 0;
+  background: transparent; color: var(--muted);
+  display: grid; place-items: center;
+  cursor: pointer; font-family: inherit; font-size: 13px;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease,
+              transform var(--dur-fast) var(--ease);
+}
+.rail-item:active { transform: scale(.94); }
+.rail-item:hover { background: var(--surface-2); color: var(--text); }
+/* 选中态就是本项目的胶囊底色，不加左侧竖条——那是参考项目的视觉签名，不用搬 */
+.rail-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.rail-item.sm { width: 34px; height: 34px; border-radius: 9px; }
+.rail-item.sm svg { width: 16px; height: 16px; }
+
+/* 文案：只在展开时出现。
+   不能只靠 opacity —— 收起状态下它是 display:none，opacity 无从过渡，
+   宽度一开文字就硬闪出来。改成展开时挂一个短动画，并晚 60ms 起步：
+   先让 rail 撑开、再让文字滑进来，顺序反了会看到文字被裁掉一半。 */
+.rail-label {
+  display: none;
+  font-size: 13px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+body.rail-open .rail-label {
+  display: block;
+  animation: labelIn calc(.22s * var(--anim-scene)) var(--ease-standard) both;
+  animation-delay: calc(.06s * var(--anim-scene));
+}
+@keyframes labelIn {
+  from { opacity: 0; transform: translate3d(-6px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+body.rail-open .rail-item {
+  width: 100%;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  /* place-items 是 place-items: <align> <justify>；写成 center start 图标才贴左，
+     否则图标和文案各自在自己的列里居中，中间空出一大块（截图里就是这个毛病） */
+  place-items: center start;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.rail-foot {
+  margin-top: auto; padding-top: var(--sp-2);
+  display: flex; flex-direction: column; gap: var(--sp-2); align-items: center;
+  width: 100%;
+}
+body.rail-open .rail-foot { align-items: stretch; }
+
+/* 账号卡：收起时只剩头像方块，展开时显示名字与渠道 */
+/* 不套边框和底色，头像直接摆在那儿——HMCL 原版就是这个样子 */
+.account-chip {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 6px 4px; margin: 0;
+  border: 0; border-radius: var(--r-md);
+  background: transparent; color: var(--text);
+  cursor: pointer; text-align: left; font-family: inherit;
+  transition: background var(--dur-fast) ease;
+}
+.account-chip:hover { background: var(--surface-2); }
+body.rail-open .account-chip { padding: 6px 6px; }
+
+.avatar {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  border-radius: 0; image-rendering: pixelated; object-fit: cover;
+  /* 不要紫色渐变底：未登录时那块会被当成一块突兀的紫方块。
+     现在默认头像就是内置 Steve 的脸，底色调成中性面即可。 */
+  background: var(--surface-2);
+}
+.chip-meta { display: none; flex-direction: column; line-height: 1.25; min-width: 0; }
+body.rail-open .chip-meta { display: flex; }
+.chip-meta strong { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-meta span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 收起/展开按钮的图标按状态互换 */
+.rail-toggle .ico-expand { display: none; }
+body.rail-open .rail-toggle .ico-collapse { display: none; }
+body.rail-open .rail-toggle .ico-expand { display: block; }
+
+.content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* ---------------- 页头 + 滚动体 ---------------- */
+
+.page-head {
+  flex: 0 0 auto; height: var(--head-h);
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 0 var(--sp-5);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.ph-icon {
+  width: 34px; height: 34px; flex: 0 0 34px;
+  border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent);
+  display: grid; place-items: center;
+}
+.ph-icon svg { width: 18px; height: 18px; }
+
+.ph-text { min-width: 0; }
+.ph-title { font-size: 15px; font-weight: 600; line-height: 1.25; }
+.ph-desc {
+  font-size: 11.5px; color: var(--muted); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.ph-acts { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); }
+
+.kbd-btn {
+  height: 30px; padding: 0 11px;
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: transparent; color: var(--muted);
+  font-size: 12.5px; font-family: inherit; cursor: pointer;
+  transition: color var(--dur-fast) ease, border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.kbd-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.kbd-btn svg { width: 14px; height: 14px; }
+
+.page-body {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-4) var(--sp-5) var(--sp-6);
+  /* 切页时浏览器会尝试保持滚动锚点，会把新页面拉到中间 */
+  overflow-anchor: none;
+}
+
+.page { display: none; }
+.page.on { display: block; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: calc(.01ms * var(--anim-scale)) !important; animation-iteration-count: 1 !important;
+    transition-duration: calc(.01ms * var(--anim-scale)) !important;
+  }
+}
+
+/* ---------------- 首页 Hero ---------------- */
+
+.hero {
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap;
+  padding: var(--sp-5);
+  border-radius: var(--r-xl);
+  /* 白色毛玻璃，不再用品牌色渐变 */
+  background: var(--hero-bg);
+  /* 比顶栏稍强一档，跟随同一个滑块 */
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur, 18px) * 1.2)) saturate(160%);
+  backdrop-filter: blur(calc(var(--glass-blur, 18px) * 1.2)) saturate(160%);
+  border: 1px solid var(--hero-line);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(16, 24, 40, .08);
+}
+
+.hero-icon {
+  width: 72px; height: 72px; flex: 0 0 72px;
+  /* 不要底图：实例图标本身多半带透明通道，垫一层圆角方块会额外多出一圈底色。
+     没有图标时的兜底是 iconNode() 画出来的渐变 + 首字母，自带底。 */
+  background: transparent;
+  object-fit: contain; image-rendering: pixelated;
+}
+
+.hero-main { flex: 1 1 240px; min-width: 0; }
+.hero-title-row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.hero-title-row h2 {
+  margin: 0; font-size: 22px; letter-spacing: -.3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hero-sub { margin: 5px 0 0; font-size: 12.5px; opacity: .9; }
+.hero-meta { display: flex; gap: var(--sp-4); margin-top: 10px; font-size: 12px; opacity: .92; flex-wrap: wrap; }
+
+/* 按钮区可以换行：窄窗口下改成横排，不挤压标题 */
+.hero-actions { display: flex; flex-direction: column; gap: var(--sp-2); flex: 0 0 auto; }
+
+.badge {
+  font-size: 11px; padding: 2px 9px; border-radius: 999px;
+  background: rgba(255, 255, 255, .22); color: #fff; white-space: nowrap;
+}
+.badge.soft { background: rgba(255, 255, 255, .14); }
+
+/* ---------------- 按钮 ---------------- */
+
+.btn {
+  height: 36px; padding: 0 var(--sp-4);
+  border-radius: 10px; border: 1px solid transparent;
+  font-size: 13.5px; font-weight: 600; font-family: inherit;
+  cursor: pointer;
+  /* 按下用 90ms 速沉，松开用 220ms 弹簧回弹 —— 两段时长必须不一样，
+     对称的话按下去和弹回来一样慢，手感会"糊"。 */
+  transition: transform calc(.22s * var(--anim-scale)) var(--ease-spring),
+              background var(--dur-fast) ease,
+              border-color var(--dur-fast) ease,
+              filter var(--dur-fast) ease;
+}
+.btn:active { transform: scale(.965); transition-duration: var(--dur-press); }
+.btn.small { height: 30px; padding: 0 12px; font-size: 12.5px; border-radius: 9px; }
+.btn.block { width: 100%; }
+.btn.primary { background: #fff; color: #3b4ce0; box-shadow: var(--shadow-1); }
+.btn.primary:hover { background: #f2f4ff; }
+.btn.primary:disabled { opacity: .6; cursor: default; }
+.btn.ghost { background: transparent; border-color: var(--border); color: var(--text); }
+.btn.ghost:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.btn.ghost:disabled { opacity: .5; cursor: default; }
+.hero .btn.ghost { border-color: var(--border-strong); color: var(--text); }
+.hero .btn.ghost:hover { background: var(--surface-2); }
+/* 暗色下背景更深，描边要提亮一点才看得见 */
+body[data-theme="dark"] .hero .btn.ghost { border-color: rgba(255, 255, 255, .22); }
+
+/* hero 变白玻璃后，白底蓝字的按钮在上面糊成一片，改成实心 accent */
+.hero .btn.primary { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(79, 110, 247, .28); }
+.hero .btn.primary:hover { filter: brightness(1.06); }
+.hero .btn.primary:disabled { opacity: .5; }
+
+/* 页面内的主色按钮（外观页「应用到账号」不在渐变底上，用真 accent） */
+.ap-left .btn.primary,
+.modal .btn.primary { background: var(--accent); color: #fff; }
+.ap-left .btn.primary:hover,
+.modal .btn.primary:hover { filter: brightness(1.06); }
+.modal .btn.primary:disabled { opacity: .5; cursor: default; }
+
+.link { border: 0; background: transparent; color: var(--accent); font-size: 13px; cursor: pointer; font-family: inherit; }
+.link:hover { text-decoration: underline; }
+
+/* ---------------- 区块 / 网格 ---------------- */
+
+.section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-3);
+  margin: var(--sp-5) 0 var(--sp-3);
+}
+.section-head:first-child { margin-top: 0; }
+.section-head h3 { margin: 0; font-size: 14px; font-weight: 600; }
+
+/* 网格统一用 auto-fit：auto-fill 会留下空轨道，卡片挤在左边、右边空一条 */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--sp-3); }
+.grid.three { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+/* 实例卡：列数跟着数量走，1 张铺满、2 张平分、3 张以上固定三列。
+   4 张就是「上三下一」，第 4 张跟上面第一张左对齐，不会独占一行。 */
+.grid.instances {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.grid.instances[data-count="1"] { grid-template-columns: minmax(0, 1fr); }
+.grid.instances[data-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* 第 6 格：满 5 个实例后代替「查看全部」按钮 */
+.instance-more {
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 6px;
+  border-style: dashed;
+  color: var(--muted);
+}
+.instance-more:hover { color: var(--accent); border-color: var(--accent); }
+.instance-more strong { font-size: 13.5px; font-weight: 600; }
+.instance-more span { font-size: 12px; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1), var(--card-inner);
+}
+.card.pad { padding: var(--sp-4) var(--sp-5); }
+.card h4 { margin: 0 0 var(--sp-1); font-size: 13.5px; }
+.card p { margin: 0 0 10px; }
+
+/* 实例卡 */
+.instance-card {
+  position: relative;
+  display: flex; gap: var(--sp-3);
+  padding: 13px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); cursor: pointer;
+  transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease),
+              box-shadow var(--dur-fast) ease;
+}
+.instance-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.instance-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+.instance-icon {
+  width: 46px; height: 46px; flex: 0 0 46px;
+  border-radius: var(--r-md); background: transparent;
+  object-fit: contain; image-rendering: pixelated;
+}
+.instance-body { min-width: 0; flex: 1; }
+.instance-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.instance-line { font-size: 12px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.instance-tags { display: flex; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+
+.tag {
+  font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+  white-space: nowrap;
+}
+
+.icon-edit {
+  position: absolute; right: 8px; top: 8px;
+  width: 24px; height: 24px; border-radius: var(--r-sm);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: pointer; font-size: 12px; line-height: 1;
+  opacity: 0; transition: opacity var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.instance-card:hover .icon-edit { opacity: 1; }
+.icon-edit:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 动态 */
+.list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.news-item {
+  display: flex; gap: 14px; padding: 12px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg);
+  text-decoration: none; color: inherit;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.news-item:hover { border-color: var(--accent); background: var(--surface-2); }
+.news-thumb { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 10px; object-fit: cover; background: var(--surface-2); }
+.news-body { min-width: 0; flex: 1; }
+.news-title { font-weight: 600; font-size: 13.5px; }
+.news-desc { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.news-time { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.empty {
+  padding: var(--sp-5);
+  text-align: center; color: var(--muted); font-size: 13px;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-lg);
+}
+
+/* 空状态放在网格里时跨满整行，否则长句会被挤成竖条 */
+.grid .empty, .asset-grid .empty { grid-column: 1 / -1; text-align: left; line-height: 1.7; max-width: 560px; }
+
+/* ---------------- 账号页 ---------------- */
+
+.account-hero { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-5); flex-wrap: wrap; }
+.account-avatar {
+  width: 80px; height: 80px; flex: 0 0 80px;
+  /* 头像本身就是一张脸，不要再套圆角框和底板 */
+  border-radius: 0;
+  background: none;
+  image-rendering: pixelated; object-fit: cover;
+}
+.account-info { flex: 1 1 200px; min-width: 0; }
+.account-info h2 { margin: 0 0 4px; font-size: 19px; }
+.account-info p { margin: 0; word-break: break-all; }
+.account-actions { display: flex; gap: var(--sp-2); flex: 0 0 auto; flex-wrap: wrap; }
+
+.login-card {
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface); border: 1px solid var(--border);
+  cursor: pointer; text-align: left; font-family: inherit; color: var(--text);
+  transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) ease;
+}
+.login-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.login-card strong { font-size: 14px; }
+/* 不可用的入口（发行版没带微软 client id 时）：置灰但保留可见，让用户知道有这功能 */
+.login-card.disabled { opacity: .55; cursor: not-allowed; }
+.login-card.disabled:hover { border-color: var(--border); transform: none; box-shadow: none; }
+.login-card span { font-size: 12px; color: var(--muted); }
+
+.account-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.account-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 10px 14px; border-radius: var(--r-md);
+  background: var(--surface); border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.account-row:hover { border-color: var(--accent); }
+.account-row.current { border-color: var(--accent); background: var(--accent-soft); }
+.account-row img { width: 32px; height: 32px; border-radius: 0; image-rendering: pixelated; background: none; }
+.account-row .row-main { flex: 1; min-width: 0; }
+.account-row .row-name { font-size: 13.5px; font-weight: 600; }
+.account-row .row-sub { font-size: 12px; color: var(--muted); }
+.account-row .row-del {
+  font-size: 12px; color: var(--danger); background: transparent;
+  border: 0; cursor: pointer; font-family: inherit; padding: 4px 6px; border-radius: 6px;
+}
+.account-row .row-del:hover { background: rgba(229, 72, 77, .1); }
+
+/* ---------------- 表格 ---------------- */
+
+/* 和 .dl-list 同一个坑：长列表 + 圆角裁剪会拖垮滚动 */
+.table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: visible; }
+.table .table-row.head { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.table-row {
+  display: grid;
+  /* 最后一列是「内容」按钮，52px 够放下两个汉字 */
+  grid-template-columns: minmax(120px, 1.7fr) minmax(96px, 1fr) 56px 84px 92px 52px;
+  gap: var(--sp-3);
+  padding: 11px var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px; align-items: center;
+}
+.table-row > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-row:last-child { border-bottom: 0; }
+.table-row { contain: layout style; }
+.table-row.head { color: var(--muted); font-size: 12px; background: var(--surface-2); }
+
+/* ---------------- 弹窗 ---------------- */
+
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(10, 12, 18, .45);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn calc(.18s * var(--anim-scene)) var(--ease-standard) both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.modal-body {
+  width: 480px; max-width: 92vw; max-height: 90vh; overflow-y: auto;
+  padding: var(--sp-5);
+  /* 弹窗从 0.94 弹到 1：起点再小就成了"缩略图展开"，再大就看不出动。
+     曲线带 2.8% 过冲，落到 1 时那一下正好收住，不会晃。 */
+  animation: popIn calc(.3s * var(--anim-scene)) var(--ease-spring) both;
+}
+@keyframes popIn {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.94); }
+  to   { opacity: 1; transform: none; }
+}
+
+.modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-2); }
+.modal-head h3 { margin: 0; font-size: 15px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
+
+.icon-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: var(--sp-3); }
+.icon-cell { aspect-ratio: 1; border-radius: var(--r-md); border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; padding: 4px; }
+.icon-cell:hover { border-color: var(--accent); }
+.icon-cell img { width: 100%; height: 100%; border-radius: 9px; image-rendering: pixelated; object-fit: cover; }
+
+.crop-stage {
+  position: relative; width: 360px; height: 360px; max-width: 100%;
+  margin: var(--sp-3) auto 0; border-radius: var(--r-lg);
+  overflow: hidden; background: var(--surface-2); cursor: grab;
+}
+.crop-stage:active { cursor: grabbing; }
+#crop-canvas { display: block; }
+.crop-frame { position: absolute; border: 2px solid #fff; border-radius: 4px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .38); pointer-events: none; }
+
