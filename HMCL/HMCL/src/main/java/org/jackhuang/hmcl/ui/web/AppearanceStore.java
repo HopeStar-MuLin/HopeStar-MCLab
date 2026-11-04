@@ -1,0 +1,649 @@
+/*
+ * Hello Minecraft! Launcher
+ * Copyright (C) 2026  huangyuhui <huanghongxun2008@126.com> and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.ui.web;
+
+import javafx.scene.image.Image;
+import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.auth.yggdrasil.TextureModel;
+import org.jackhuang.hmcl.util.gson.JsonUtils;
+import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jackhuang.hmcl.util.skin.NormalizedSkin;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
+/**
+ * 外观仓库：皮肤、披风（可带独立鞘翅贴图）、按账号保存的选择状态。
+ *
+ * <pre>
+ * %HMCL_HOME%/appearance/
+ *   skins/&lt;id&gt;.png          皮肤原图
+ *   capes/&lt;id&gt;.png          披风原图
+ *   capes/&lt;id&gt;.elytra.png   可选：同一披风附带的鞘翅贴图
+ *   skins.json / capes.json  索引
+ *   state/&lt;accountID&gt;.json  该账号选中的皮肤、披风、模型、背饰形态
+ * </pre>
+ *
+ * <p>文件按内容哈希去重；任何一张图读失败都只影响它自己，不会让整个外观页崩掉。
+ */
+public final class AppearanceStore {
+
+    public enum Kind {
+        SKIN, CAPE,
+        /// 启动器背景图。和皮肤/披风同一套「导入 → 库存 → 切换」，
+        /// 但不需要尺寸校验（背景可以是任意长宽比），也可能不是 png。
+        BACKGROUND
+    }
+
+    public static final class Asset {
+        String id;
+        String name;
+        /// 皮肤专用：slim / default
+        String model;
+        /// 披风专用：是否带独立鞘翅贴图
+        boolean hasElytra;
+        /// 背景图专用：原文件格式（png / jpg / webp / gif / bmp）。
+        /// 皮肤披风一律存成 png，背景图不行——webp/gif 转 png 会丢帧、丢体积优势。
+        String format;
+        /// 随启动器内置的素材（原版 Steve / Alex），不允许删除
+        boolean builtin;
+        long addedAt;
+
+        private transient Image image;
+        private transient Image elytraImage;
+
+        Asset() {
+        }
+
+        Asset(String id, String name, String model, boolean hasElytra, long addedAt) {
+            this.id = id;
+            this.name = name;
+            this.model = model;
+            this.hasElytra = hasElytra;
+            this.addedAt = addedAt;
+        }
+
+        Asset(String id, String name, String model, boolean builtin) {
+            this.id = id;
+            this.name = name;
+            this.model = model;
+            this.builtin = builtin;
+            this.addedAt = 0L;
+        }
+
+        public boolean isBuiltin() {
+            return builtin;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public boolean isHasElytra() {
+            return hasElytra;
+        }
+
+        public long getAddedAt() {
+            return addedAt;
+        }
+    }
+
+    public static final class State {
+        String skin;
+        String cape;
+        String model;
+
+        /// 宽体/纤体是不是用户**手动**选的。
+        ///
+        /// 之前只靠 `model` 有没有值来判断「用户选过没有」，可 `model` 也会被
+        /// 皮肤自带的推荐值填上，于是第一次选皮肤之后它永远有值——
+        /// 换来换去模型就再也不跟着皮肤走了（选 Alex 显示宽体，再切回又对）。
+        /// 用 Boolean 而不是 boolean：老配置里没这个字段，读到 null 才能区分
+        /// 「没有这个字段」和「明确是 false」。
+        Boolean modelTouched;
+
+        public State() {
+        }
+
+        public State(String skin, String cape, String model) {
+            this.skin = skin;
+            this.cape = cape;
+            this.model = model;
+        }
+
+        public String getSkin() {
+            return skin;
+        }
+
+        public String getCape() {
+            return cape;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public Boolean getModelTouched() {
+            return modelTouched;
+        }
+    }
+
+    private static final class Index {
+        int version = 1;
+        List<Asset> entries = new ArrayList<>();
+    }
+
+    // 目录常量必须声明在 INSTANCE 之前：静态字段按文本顺序初始化，
+    // 否则单例构造时 SKIN_DIR 还是 null（已踩过一次，表现为启动即 NPE）。
+    public static final Path ROOT = Metadata.HMCL_USER_HOME.resolve("appearance");
+    private static final Path SKIN_DIR = ROOT.resolve("skins");
+    private static final Path CAPE_DIR = ROOT.resolve("capes");
+    private static final Path BACKGROUND_DIR = ROOT.resolve("backgrounds");
+    private static final Path STATE_DIR = ROOT.resolve("state");
+
+    private static final AppearanceStore INSTANCE = new AppearanceStore();
+
+    public static AppearanceStore getInstance() {
+        return INSTANCE;
+    }
+
+    private final List<Asset> skins = new ArrayList<>();
+    private final List<Asset> capes = new ArrayList<>();
+    private final List<Asset> backgrounds = new ArrayList<>();
+
+    private AppearanceStore() {
+        try {
+            Files.createDirectories(SKIN_DIR);
+            Files.createDirectories(CAPE_DIR);
+            Files.createDirectories(BACKGROUND_DIR);
+            Files.createDirectories(STATE_DIR);
+        } catch (IOException e) {
+            LOG.warning("Failed to create appearance directories", e);
+        }
+        load(Kind.SKIN, skins);
+        load(Kind.CAPE, capes);
+        load(Kind.BACKGROUND, backgrounds);
+        ensureBuiltinSkins();
+    }
+
+    /// 内置素材：只放原版两套皮肤（Steve 宽体、Alex 纤体），披风一个都不预置。
+    ///
+    /// <p>皮肤取自 {@code HMCLCore} 里已有的资源，首次启动时复制到皮肤目录，
+    /// 这样它们能被正常预览、上传，也不会因为资源包缺失而变成空白。
+    /// 标记为 {@code builtin} 之后不允许删除，避免用户误操作把唯一的默认皮肤删掉。
+    private static final String BUILTIN_STEVE = "builtin-steve";
+    private static final String BUILTIN_ALEX = "builtin-alex";
+
+    /// 重新从磁盘读一遍索引。
+    ///
+    /// <p>只在「外部改过目录」之后用：从旧启动器迁移时 `appearance/` 是整目录复制
+    /// 进来的，内存里这份还是启动那一刻的快照。不重读就往里加背景图，写索引时会把
+    /// 刚复制进来的条目全冲掉。
+    public void reload() {
+        skins.clear();
+        capes.clear();
+        backgrounds.clear();
+        load(Kind.SKIN, skins);
+        load(Kind.CAPE, capes);
+        load(Kind.BACKGROUND, backgrounds);
+        ensureBuiltinSkins();
+    }
+
+    private void ensureBuiltinSkins() {
+        installBuiltinSkin(BUILTIN_STEVE, "Steve", "default",
+                "/assets/img/skin/wide/steve.png");
+        installBuiltinSkin(BUILTIN_ALEX, "Alex", "slim",
+                "/assets/img/skin/slim/alex.png");
+    }
+
+    private void installBuiltinSkin(String id, String name, String model, String resource) {
+        Path target = fileOf(Kind.SKIN, id);
+        Asset existing = find(Kind.SKIN, id);
+
+        if (existing != null && Files.isRegularFile(target)) {
+            // 内置素材的显示名会随版本调整（原来带「（宽体）」后缀），
+            // 这里跟着同步，否则老用户升级之后还看到旧名字。
+            if (!name.equals(existing.name) || !model.equals(existing.model)) {
+                existing.name = name;
+                existing.model = model;
+                save(Kind.SKIN, skins);
+            }
+            return;
+        }
+
+        try (InputStream in = AppearanceStore.class.getResourceAsStream(resource)) {
+            if (in == null) {
+                LOG.warning("Builtin skin resource missing: " + resource);
+                return;
+            }
+            Files.createDirectories(SKIN_DIR);
+            // 先写临时文件再替换，避免上次异常退出留下半张图
+            Path tmp = target.resolveSibling(id + ".png.tmp");
+            Files.copy(in, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            LOG.warning("Failed to install builtin skin " + id, e);
+            return;
+        }
+
+        if (existing == null) {
+            skins.add(new Asset(id, name, model, true));
+        }
+        save(Kind.SKIN, skins);
+    }
+
+    // ==================== 索引读写 ====================
+
+    private static Path indexFile(Kind kind) {
+        return switch (kind) {
+            case SKIN -> ROOT.resolve("skins.json");
+            case CAPE -> ROOT.resolve("capes.json");
+            case BACKGROUND -> ROOT.resolve("backgrounds.json");
+        };
+    }
+
+    private static Path dirOf(Kind kind) {
+        return switch (kind) {
+            case SKIN -> SKIN_DIR;
+            case CAPE -> CAPE_DIR;
+            case BACKGROUND -> BACKGROUND_DIR;
+        };
+    }
+
+    private void load(Kind kind, List<Asset> target) {
+        Path file = indexFile(kind);
+        if (!Files.isRegularFile(file)) {
+            return;
+        }
+        try {
+            Index index = JsonUtils.fromJson(Files.readString(file), Index.class);
+            if (index == null || index.entries == null) {
+                return;
+            }
+            for (Asset asset : index.entries) {
+                if (asset.id != null && Files.isRegularFile(fileFor(kind, asset))) {
+                    target.add(asset);
+                }
+            }
+        } catch (Exception e) {
+            LOG.warning("Failed to read " + file, e);
+        }
+    }
+
+    private void save(Kind kind, List<Asset> source) {
+        Index index = new Index();
+        index.entries = new ArrayList<>(source);
+        try {
+            Files.createDirectories(ROOT);
+            FileUtils.saveSafely(indexFile(kind), JsonUtils.GSON.toJson(index));
+        } catch (IOException e) {
+            LOG.warning("Failed to save " + indexFile(kind), e);
+        }
+    }
+
+    // ==================== 查询 ====================
+
+    public List<Asset> list(Kind kind) {
+        return switch (kind) {
+            case SKIN -> skins;
+            case CAPE -> capes;
+            case BACKGROUND -> backgrounds;
+        };
+    }
+
+    /// 这张图在库里已经有了吗（按文件内容哈希查）。
+    ///
+    /// <p>导入前先问一次：`importSkin` / `importCape` 内部虽然也会按哈希去重，
+    /// 但它们只返回那个已存在的资产，调用方分不出「刚加进去」和「本来就有」，
+    /// 于是界面上一律提示「已导入」，用户会以为自己又多了一张。
+    public @Nullable Asset findExisting(Kind kind, Path file) throws IOException {
+        return find(kind, sha1(file));
+    }
+
+    public Asset find(Kind kind, String id) {
+        if (id == null) {
+            return null;
+        }
+        for (Asset asset : list(kind)) {
+            if (asset.id.equals(id)) {
+                return asset;
+            }
+        }
+        return null;
+    }
+
+    public Path fileOf(Kind kind, String id) {
+        if (kind != Kind.BACKGROUND) {
+            return dirOf(kind).resolve(id + ".png");
+        }
+        Asset asset = find(kind, id);
+        return asset != null ? fileFor(kind, asset) : dirOf(kind).resolve(id + ".png");
+    }
+
+    /// 已知资产时直接拼路径。
+    ///
+    /// <p>背景图保留原扩展名（webp / gif 转 png 会丢帧、体积还会翻几倍），
+    /// 所以路径必须带上 `asset.format`。`load` 阶段资产还没进列表，不能走 `fileOf`。
+    private static Path fileFor(Kind kind, Asset asset) {
+        if (kind != Kind.BACKGROUND) {
+            return dirOf(kind).resolve(asset.id + ".png");
+        }
+        String ext = (asset.format == null || asset.format.isBlank()) ? "png" : asset.format;
+        return dirOf(kind).resolve(asset.id + "." + ext);
+    }
+
+    public Path elytraFileOf(String id) {
+        return CAPE_DIR.resolve(id + ".elytra.png");
+    }
+
+    public Image image(Kind kind, Asset asset) throws IOException {
+        if (asset == null) {
+            return null;
+        }
+        if (asset.image != null) {
+            return asset.image;
+        }
+        asset.image = readImage(fileFor(kind, asset));
+        return asset.image;
+    }
+
+    public Image elytraImage(Asset asset) {
+        if (asset == null || !asset.hasElytra) {
+            return null;
+        }
+        if (asset.elytraImage != null) {
+            return asset.elytraImage;
+        }
+        try {
+            asset.elytraImage = readImage(elytraFileOf(asset.id));
+            return asset.elytraImage;
+        } catch (IOException e) {
+            LOG.warning("Failed to read elytra texture of " + asset.id, e);
+            return null;
+        }
+    }
+
+    private static Image readImage(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) {
+            throw new IOException("missing file: " + file);
+        }
+        try (InputStream in = Files.newInputStream(file)) {
+            Image image = new Image(in);
+            if (image.isError()) {
+                throw new IOException("bad image: " + file, image.getException());
+            }
+            return image;
+        }
+    }
+
+    // ==================== 导入 / 删除 ====================
+
+    public Asset importSkin(Path file) throws IOException {
+        return importSkin(file, null);
+    }
+
+    /// 导入皮肤。{@code preferredName} 用来指定显示名——壳模式的文件是前端
+    /// 读成 dataUrl 再落到临时文件的，临时文件名不适合出现在界面上，
+    /// 所以由前端把用户选的文件名传进来。传 null 则退回文件名。
+    public Asset importSkin(Path file, @Nullable String preferredName) throws IOException {
+        Image image = readImage(file);
+        if (!isSkinSize(image)) {
+            throw new IOException("不是合法的皮肤文件（需要 64 的倍数，且高为宽或宽的一半）");
+        }
+
+        String id = sha1(file);
+        Asset existing = find(Kind.SKIN, id);
+        if (existing != null) {
+            return existing;
+        }
+
+        Path target = fileOf(Kind.SKIN, id);
+        copyAtomically(file, target);
+
+        boolean slim;
+        try {
+            slim = new NormalizedSkin(image).isSlim();
+        } catch (Exception e) {
+            slim = false;
+        }
+
+        String name = (preferredName == null || preferredName.isBlank()) ? baseName(file) : preferredName;
+        Asset asset = new Asset(id, uniqueName(Kind.SKIN, name), slim ? TextureModel.SLIM.modelName : TextureModel.WIDE.modelName,
+                false, System.currentTimeMillis());
+        asset.image = image;
+        skins.add(0, asset);
+        save(Kind.SKIN, skins);
+        return asset;
+    }
+
+    /**
+     * 导入披风。{@code elytraFile} 可为 null——为 null 时渲染阶段直接用披风贴图套鞘翅。
+     */
+    public Asset importCape(Path file, Path elytraFile) throws IOException {
+        return importCape(file, elytraFile, null);
+    }
+
+    /// 导入披风。{@code preferredName} 同 {@link #importSkin(Path, String)}。
+    public Asset importCape(Path file, Path elytraFile, @Nullable String preferredName) throws IOException {
+        Image image = readImage(file);
+        String id = sha1(file);
+        Asset existing = find(Kind.CAPE, id);
+        if (existing != null) {
+            return existing;
+        }
+
+        Path target = fileOf(Kind.CAPE, id);
+        copyAtomically(file, target);
+
+        boolean hasElytra = false;
+        if (elytraFile != null && Files.isRegularFile(elytraFile)) {
+            copyAtomically(elytraFile, elytraFileOf(id));
+            hasElytra = true;
+        }
+
+        String name = (preferredName == null || preferredName.isBlank()) ? baseName(file) : preferredName;
+        Asset asset = new Asset(id, uniqueName(Kind.CAPE, name), null, hasElytra, System.currentTimeMillis());
+        asset.image = image;
+        capes.add(0, asset);
+        save(Kind.CAPE, capes);
+        return asset;
+    }
+
+    /// 导入一张背景图。
+    ///
+    /// <p>和皮肤不同，背景不校验尺寸——任意长宽比都能铺。但**必须能被读成图片**：
+    /// 读不出来的多半是改了扩展名的别的东西，存进去只会在界面上变成一块空白。
+    ///
+    /// @param format 嗅探出来的扩展名（png / jpg / webp / gif / bmp），带不带点都行
+    public Asset importBackground(Path file, String format, @Nullable String preferredName) throws IOException {
+        Image image = readImage(file);
+        String id = sha1(file);
+        Asset existing = find(Kind.BACKGROUND, id);
+        if (existing != null) {
+            // 同一张图重复导入：直接返回原来的，前端据 id 相等判断「已经有了」
+            return existing;
+        }
+
+        String ext = (format == null || format.isBlank())
+                ? "png"
+                : format.replace(".", "").toLowerCase(java.util.Locale.ROOT);
+        String name = (preferredName == null || preferredName.isBlank()) ? baseName(file) : preferredName;
+
+        Asset asset = new Asset(id, uniqueName(Kind.BACKGROUND, name), null, false, System.currentTimeMillis());
+        asset.format = ext;
+        // 先复制再入索引：复制失败时列表里不会多出一个指向空气的条目
+        copyAtomically(file, fileFor(Kind.BACKGROUND, asset));
+        asset.image = image;
+        backgrounds.add(0, asset);
+        save(Kind.BACKGROUND, backgrounds);
+        return asset;
+    }
+
+    public void remove(Kind kind, String id) {
+        Asset asset = find(kind, id);
+        if (asset == null || asset.builtin) {
+            // 内置皮肤不允许删除，界面上也不给入口
+            return;
+        }
+        Path file = fileFor(kind, asset);
+        list(kind).remove(asset);
+        try {
+            Files.deleteIfExists(file);
+            if (kind == Kind.CAPE) {
+                Files.deleteIfExists(elytraFileOf(id));
+            }
+        } catch (IOException e) {
+            LOG.warning("Failed to delete appearance file " + id, e);
+        }
+        save(kind, list(kind));
+    }
+
+    public void rename(Kind kind, String id, String name) {
+        Asset asset = find(kind, id);
+        if (asset == null || asset.builtin || name == null || name.isBlank()) {
+            return;
+        }
+        asset.name = uniqueName(kind, name.trim(), asset);
+        save(kind, list(kind));
+    }
+
+    // ==================== 账号状态 ====================
+
+    /// 账号 id 在接口层带 `account:` 这类前缀（前端要区分渠道），
+    /// 但冒号在 Windows 文件名里非法，直接拼会抛 InvalidPathException。
+    /// 换成下划线：仍然可读、不同渠道不会撞名、也不会和 uuid 本身混淆。
+    private static Path stateFile(String accountId) {
+        String safe = accountId == null ? "none" : accountId.replaceAll("[^A-Za-z0-9._-]", "_");
+        return STATE_DIR.resolve(safe + ".json");
+    }
+
+    public State stateOf(String accountId) {
+        Path file = stateFile(accountId);
+        if (!Files.isRegularFile(file)) {
+            return new State(null, null, null);
+        }
+        try {
+            State state = JsonUtils.fromJson(Files.readString(file), State.class);
+            if (state == null) {
+                return new State(null, null, null);
+            }
+            // 老配置没有 modelTouched 字段，一律当「没手动选过」，让模型重新跟随皮肤。
+            // 反过来的保守做法（有 model 就算手动选过）会把这个 bug 原样保留：
+            // 那些 model 值本来就是皮肤自动填进去的，不是用户的意图。
+            return state;
+        } catch (Exception e) {
+            LOG.warning("Failed to read appearance state for " + accountId, e);
+            return new State(null, null, null);
+        }
+    }
+
+    /// 把一份外观状态从一个账号挪到另一个账号。
+    ///
+    /// 离线账号改名会换 UUID，而外观状态是按 accountID 存的文件；
+    /// 不搬的话用户改完名字会发现皮肤和披风都没了。
+    public void moveState(String fromId, String toId) {
+        if (fromId == null || toId == null || fromId.equals(toId)) {
+            return;
+        }
+        State state = stateOf(fromId);
+        saveState(toId, state);
+        try {
+            Files.deleteIfExists(stateFile(fromId));
+        } catch (IOException e) {
+            LOG.warning("Failed to remove old appearance state for " + fromId, e);
+        }
+    }
+
+    public void saveState(String accountId, State state) {
+        try {
+            Files.createDirectories(STATE_DIR);
+            FileUtils.saveSafely(stateFile(accountId), JsonUtils.GSON.toJson(state));
+        } catch (IOException e) {
+            LOG.warning("Failed to save appearance state for " + accountId, e);
+        }
+    }
+
+    // ==================== 工具 ====================
+
+    private static void copyAtomically(Path source, Path target) throws IOException {
+        Files.createDirectories(target.getParent());
+        Path tmp = FileUtils.tmpSaveFile(target);
+        Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private static boolean isSkinSize(Image image) {
+        int width = (int) image.getWidth();
+        int height = (int) image.getHeight();
+        return width > 0 && width % 64 == 0 && (height == width || height * 2 == width);
+    }
+
+    private static String baseName(Path file) {
+        String name = FileUtils.getNameWithoutExtension(file);
+        return name == null || name.isBlank() ? "未命名" : name;
+    }
+
+    private String uniqueName(Kind kind, String name) {
+        return uniqueName(kind, name, null);
+    }
+
+    private String uniqueName(Kind kind, String name, Asset self) {
+        String candidate = name;
+        int index = 2;
+        while (true) {
+            String current = candidate;
+            boolean conflict = list(kind).stream()
+                    .anyMatch(it -> it != self && it.name != null && it.name.equals(current));
+            if (!conflict) {
+                return candidate;
+            }
+            candidate = name + " (" + index++ + ")";
+        }
+    }
+
+    private static String sha1(Path file) throws IOException {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-1");
+            return HexFormat.of().formatHex(digest.digest(Files.readAllBytes(file))).substring(0, 16);
+        } catch (Exception e) {
+            throw new IOException(e);
+        }
+    }
+
+}
